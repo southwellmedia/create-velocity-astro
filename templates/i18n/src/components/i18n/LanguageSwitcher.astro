@@ -1,0 +1,128 @@
+---
+/**
+ * Language Switcher Component
+ * Allows users to switch between available locales while maintaining the current page
+ *
+ * This component uses the route-aware switchLocale() helper to generate
+ * correct translated URLs when switching languages.
+ *
+ * Example:
+ * - On /about → switching to ES → /es/sobre-nosotros
+ * - On /es/sobre-nosotros → switching to FR → /fr/a-propos
+ */
+
+import { locales, localeNames, localeFlags, type Locale, getLocaleFromPath } from '@/i18n/config';
+import { switchLocale } from '@/i18n/helpers';
+
+interface Props {
+  class?: string;
+}
+
+const { class: className } = Astro.props;
+
+const currentPath = Astro.url.pathname;
+const currentLocale = getLocaleFromPath(currentPath);
+---
+
+<div class:list={['relative inline-block', className]}>
+  <button
+    type="button"
+    id="language-switcher-btn"
+    class="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+    aria-expanded="false"
+    aria-haspopup="true"
+  >
+    <span class="text-base">{localeFlags[currentLocale]}</span>
+    <span>{localeNames[currentLocale]}</span>
+    <svg
+      class="h-4 w-4 transition-transform"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path
+        fill-rule="evenodd"
+        d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+        clip-rule="evenodd"></path>
+    </svg>
+  </button>
+
+  <div
+    id="language-switcher-menu"
+    class="absolute right-0 z-50 mt-2 hidden w-40 origin-top-right rounded-md border border-border bg-background shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+    role="menu"
+    aria-orientation="vertical"
+    aria-labelledby="language-switcher-btn"
+  >
+    <div class="py-1" role="none">
+      {
+        locales.map((locale) => {
+          const isActive = locale === currentLocale;
+          const href = switchLocale(currentPath, locale);
+
+          return (
+            <a
+              href={href}
+              class:list={[
+                'flex items-center gap-2 px-4 py-2 text-sm transition-colors',
+                isActive
+                  ? 'bg-primary/10 text-primary font-medium'
+                  : 'text-foreground hover:bg-muted',
+              ]}
+              role="menuitem"
+              aria-current={isActive ? 'page' : undefined}
+            >
+              <span class="text-base">{localeFlags[locale]}</span>
+              <span>{localeNames[locale]}</span>
+              {isActive && (
+                <svg
+                  class="ml-auto h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              )}
+            </a>
+          );
+        })
+      }
+    </div>
+  </div>
+</div>
+
+<script>
+  const btn = document.getElementById('language-switcher-btn');
+  const menu = document.getElementById('language-switcher-menu');
+
+  if (btn && menu) {
+    // Toggle menu
+    btn.addEventListener('click', () => {
+      const isOpen = menu.classList.contains('hidden');
+      menu.classList.toggle('hidden', !isOpen);
+      btn.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    // Close when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!btn.contains(e.target as Node) && !menu.contains(e.target as Node)) {
+        menu.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    // Close on escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        menu.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+</script>

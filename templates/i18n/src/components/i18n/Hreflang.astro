@@ -1,0 +1,66 @@
+---
+/**
+ * Hreflang Component
+ *
+ * Generates hreflang link tags for SEO, telling search engines about
+ * all available language versions of a page.
+ *
+ * Usage:
+ * <Hreflang routeId="about" />
+ *
+ * Or without routeId (auto-detects from current path):
+ * <Hreflang />
+ *
+ * Output:
+ * <link rel="alternate" hreflang="en" href="https://example.com/about" />
+ * <link rel="alternate" hreflang="es" href="https://example.com/es/sobre-nosotros" />
+ * <link rel="alternate" hreflang="fr" href="https://example.com/fr/a-propos" />
+ * <link rel="alternate" hreflang="x-default" href="https://example.com/about" />
+ */
+
+import { getRouteTranslations, resolveRouteFromPath, type RouteId } from '@/i18n/helpers';
+import { defaultLocale } from '@/i18n/config';
+import siteConfig from '@/config/site.config';
+
+interface Props {
+  /**
+   * The route ID for generating hreflang links.
+   * If not provided, attempts to resolve from current URL path.
+   */
+  routeId?: RouteId;
+}
+
+const { routeId: propRouteId } = Astro.props;
+
+// Try to resolve routeId from current path if not provided
+let routeId = propRouteId;
+if (!routeId) {
+  const resolved = resolveRouteFromPath(Astro.url.pathname);
+  routeId = resolved?.routeId;
+}
+
+// Get all translations for this route
+const translations = routeId ? getRouteTranslations(routeId) : [];
+
+// Find the default locale URL for x-default
+const defaultUrl = translations.find((t) => t.locale === defaultLocale)?.path || '/';
+---
+
+{
+  translations.length > 0 && (
+    <>
+      {translations.map(({ locale, path }) => (
+        <link
+          rel="alternate"
+          hreflang={locale}
+          href={new URL(path, siteConfig.url).toString()}
+        />
+      ))}
+      <link
+        rel="alternate"
+        hreflang="x-default"
+        href={new URL(defaultUrl, siteConfig.url).toString()}
+      />
+    </>
+  )
+}

@@ -1,0 +1,52 @@
+---
+/**
+ * LandingFooter Component (i18n-aware)
+ * Footer for landing pages with translations
+ */
+import Logo from '@/components/ui/Logo.astro';
+import { type Locale, defaultLocale, getLocaleFromPath } from '@/i18n/config';
+import { useTranslations, getLocalizedPath } from '@/i18n/index';
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale: localeProp } = Astro.props;
+
+// Get locale from prop or infer from URL
+const locale = localeProp || getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+
+const links = [
+  { label: t('footer.links.documentation'), href: getLocalizedPath('blog', locale) },
+  { label: t('footer.links.github'), href: 'https://github.com/southwellmedia/velocity' },
+  { label: t('footer.links.twitter'), href: 'https://twitter.com/southwellmedia' },
+  { label: t('footer.links.license'), href: 'https://github.com/southwellmedia/velocity/blob/main/LICENSE' },
+];
+---
+
+<footer class="border-t border-border bg-background-secondary py-12">
+  <div class="mx-auto max-w-6xl px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+    <!-- Logo & Attribution -->
+    <div class="flex flex-col gap-2">
+      <a href={getLocalizedPath('home', locale)} class="flex items-center gap-2">
+        <Logo size="sm" />
+        <span class="font-display text-lg font-bold text-brand-500">{t('site.name')}</span>
+      </a>
+    </div>
+
+    <!-- Links -->
+    <nav class="flex gap-8 text-sm text-foreground-muted font-medium">
+      {links.map((link) => (
+        <a
+          href={link.href}
+          class="hover:text-foreground transition-colors"
+          target={link.href.startsWith('http') ? '_blank' : undefined}
+          rel={link.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+        >
+          {link.label}
+        </a>
+      ))}
+    </nav>
+  </div>
+</footer>

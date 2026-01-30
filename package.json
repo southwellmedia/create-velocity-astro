@@ -1,0 +1,66 @@
+{
+  "name": "create-velocity-astro",
+  "version": "1.4.2",
+  "description": "Create Velocity - A CLI to scaffold production-ready Astro 6 + Tailwind v4 projects",
+  "type": "module",
+  "license": "MIT",
+  "author": "Southwell Media <info@southwellmedia.com>",
+  "homepage": "https://github.com/southwellmedia/create-velocity-astro#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/southwellmedia/create-velocity-astro.git"
+  },
+  "bugs": {
+    "url": "https://github.com/southwellmedia/create-velocity-astro/issues"
+  },
+  "keywords": [
+    "create",
+    "velocity",
+    "astro",
+    "tailwind",
+    "starter",
+    "template",
+    "boilerplate",
+    "cli",
+    "scaffold",
+    "i18n",
+    "internationalization"
+  ],
+  "bin": {
+    "create-velocity-astro": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.8.2",
+    "execa": "^9.5.2",
+    "giget": "^3.1.1",
+    "mri": "^1.2.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/mri": "^1.1.4",
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

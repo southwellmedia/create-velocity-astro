@@ -1,0 +1,78 @@
+---
+/**
+ * Home/Landing Page (default locale - English)
+ * URL: /
+ */
+import LandingLayout from '@/layouts/LandingLayout.astro';
+import { Hero } from '@/components/hero';
+import Button from '@/components/ui/Button.astro';
+import Badge from '@/components/ui/Badge.astro';
+import Icon from '@/components/ui/Icon.astro';
+import SocialProof from '@/components/ui/SocialProof.astro';
+import TerminalDemo from '@/components/ui/TerminalDemo.tsx';
+import TechStack from '@/components/landing/TechStack.astro';
+import FeatureTabs from '@/components/landing/FeatureTabs.tsx';
+import LighthouseScores from '@/components/landing/LighthouseScores.astro';
+import Credibility from '@/components/landing/Credibility.astro';
+import CTA from '@/components/landing/CTA.astro';
+import { defaultLocale } from '@/i18n/config';
+import { useTranslations } from '@/i18n/index';
+
+const locale = defaultLocale;
+const t = useTranslations(locale);
+
+const ctaLink = '#cta';
+---
+
+<LandingLayout
+  title={t('hero.title') + ' ' + t('hero.titleHighlight')}
+  description={t('hero.description')}
+  lang={locale}
+  routeId="home"
+>
+  <Hero layout="split" size="lg" showGrid showBlob blobPosition="right">
+    <Badge slot="badge" pill pulse>{t('hero.badge')}</Badge>
+
+    <h1 slot="title">
+      {t('hero.title')} <span class="text-brand-500">{t('hero.titleHighlight')}</span>
+    </h1>
+
+    <p slot="description">
+      {t('hero.description')}
+    </p>
+
+    <Fragment slot="actions">
+      <Button size="lg" href={ctaLink}>
+        {t('hero.cta')}
+        <Icon name="arrow-right" size="sm" />
+      </Button>
+      <Button
+        size="lg"
+        variant="outline"
+        href="https://github.com/southwellmedia/velocity"
+        target="_blank"
+      >
+        <Icon name="github" size="sm" />
+        {t('hero.github')}
+      </Button>
+    </Fragment>
+
+    <TerminalDemo slot="aside" client:load />
+
+    <SocialProof
+      class="mt-[var(--space-stack-lg)]"
+      text={t('hero.socialProof')}
+      avatars={[
+        'https://i.pravatar.cc/150?img=12',
+        'https://i.pravatar.cc/150?img=33',
+        'https://www.southwellmedia.com/_vercel/image?url=%2Fassets%2FMichaelFroseth2025.jpg&w=828&q=90',
+      ]}
+    />
+  </Hero>
+
+  <TechStack locale={locale} />
+  <FeatureTabs client:visible />
+  <LighthouseScores locale={locale} />
+  <Credibility locale={locale} />
+  <CTA locale={locale} />
+</LandingLayout>

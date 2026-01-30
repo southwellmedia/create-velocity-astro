@@ -1,0 +1,168 @@
+---
+/**
+ * Navbar Component (i18n-aware)
+ * Dynamic navigation with translations and language switcher
+ */
+import Button from '@/components/ui/Button.astro';
+import Icon from '@/components/ui/Icon.astro';
+import Logo from '@/components/ui/Logo.astro';
+import ThemeToggle from '@/components/layout/ThemeToggle.astro';
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher.astro';
+import { type Locale, defaultLocale, getLocaleFromPath } from '@/i18n/config';
+import { useTranslations, getLocalizedPath, getNavRoutes } from '@/i18n/index';
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale: localeProp } = Astro.props;
+
+// Get locale from prop or infer from URL
+const locale = localeProp || getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+
+// Get navigation routes dynamically from i18n routes
+const navRoutes = getNavRoutes();
+
+// Check if we're on the landing page to determine link behavior
+const currentPath = Astro.url.pathname;
+const homePath = getLocalizedPath('home', locale);
+const isLandingPage = currentPath === homePath || currentPath === `${homePath}/`;
+
+// Landing page specific links (anchor links)
+const featuresLink = isLandingPage ? '#features' : `${homePath}#features`;
+const ctaLink = isLandingPage ? '#cta' : `${homePath}#cta`;
+---
+
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
+  <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+    <!-- Logo -->
+    <a href={homePath} class="flex items-center gap-2">
+      <Logo size="md" />
+      <span class="font-display text-xl font-bold tracking-tight text-brand-500">{t('site.name')}</span>
+    </a>
+
+    <!-- Desktop Menu -->
+    <div class="hidden items-center gap-8 md:flex">
+      <!-- Features link (anchor to landing page section) -->
+      <a
+        href={featuresLink}
+        class="text-sm font-medium text-foreground-muted hover:text-foreground transition-colors"
+      >
+        {t('nav.features')}
+      </a>
+
+      <!-- Dynamic navigation from i18n routes -->
+      {navRoutes.map(({ routeId, label }) => (
+        <a
+          href={getLocalizedPath(routeId, locale)}
+          class="text-sm font-medium text-foreground-muted hover:text-foreground transition-colors"
+        >
+          {t(label as any)}
+        </a>
+      ))}
+
+      <div class="flex items-center gap-2">
+        <LanguageSwitcher />
+        <ThemeToggle />
+        <Button
+          variant="ghost"
+          size="sm"
+          icon
+          href="https://github.com/southwellmedia/velocity"
+          target="_blank"
+          aria-label="View on GitHub"
+        >
+          <Icon name="github" size="sm" />
+        </Button>
+        <Button size="sm" href={ctaLink}>{t('nav.getStarted')}</Button>
+      </div>
+    </div>
+
+    <!-- Mobile Toggle -->
+    <button
+      type="button"
+      class="md:hidden p-2 text-foreground hover:bg-secondary rounded-md transition-colors"
+      id="mobile-menu-toggle"
+      aria-label="Toggle menu"
+      aria-expanded="false"
+    >
+      <span class="menu-icon">
+        <Icon name="menu" size="lg" />
+      </span>
+      <span class="close-icon hidden">
+        <Icon name="x" size="lg" />
+      </span>
+    </button>
+  </div>
+
+  <!-- Mobile Menu -->
+  <div id="mobile-menu" class="hidden absolute top-16 left-0 w-full bg-background border-b border-border p-6 md:hidden flex-col gap-4 shadow-lg">
+    <!-- Features link (anchor to landing page section) -->
+    <a
+      href={featuresLink}
+      class="text-base font-medium text-foreground-secondary hover:text-foreground transition-colors"
+    >
+      {t('nav.features')}
+    </a>
+
+    <!-- Dynamic navigation from i18n routes -->
+    {navRoutes.map(({ routeId, label }) => (
+      <a
+        href={getLocalizedPath(routeId, locale)}
+        class="text-base font-medium text-foreground-secondary hover:text-foreground transition-colors"
+      >
+        {t(label as any)}
+      </a>
+    ))}
+
+    <div class="flex items-center gap-3 pt-2 border-t border-border">
+      <LanguageSwitcher />
+      <ThemeToggle />
+    </div>
+    <Button fullWidth href={ctaLink}>{t('nav.getStarted')}</Button>
+  </div>
+</nav>
+
+<script>
+  function initMobileMenu() {
+    const toggle = document.getElementById('mobile-menu-toggle');
+    const menu = document.getElementById('mobile-menu');
+    const menuIcon = toggle?.querySelector('.menu-icon');
+    const closeIcon = toggle?.querySelector('.close-icon');
+
+    if (!toggle || !menu || !menuIcon || !closeIcon) return;
+
+    toggle.addEventListener('click', () => {
+      const isOpen = menu.classList.contains('hidden');
+
+      if (isOpen) {
+        menu.classList.remove('hidden');
+        menu.classList.add('flex');
+        menuIcon.classList.add('hidden');
+        closeIcon.classList.remove('hidden');
+        toggle.setAttribute('aria-expanded', 'true');
+      } else {
+        menu.classList.add('hidden');
+        menu.classList.remove('flex');
+        menuIcon.classList.remove('hidden');
+        closeIcon.classList.add('hidden');
+        toggle.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    // Close menu when clicking on links
+    menu.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', () => {
+        menu.classList.add('hidden');
+        menu.classList.remove('flex');
+        menuIcon.classList.remove('hidden');
+        closeIcon.classList.add('hidden');
+        toggle.setAttribute('aria-expanded', 'false');
+      });
+    });
+  }
+
+  initMobileMenu();
+  document.addEventListener('astro:page-load', initMobileMenu);
+</script>

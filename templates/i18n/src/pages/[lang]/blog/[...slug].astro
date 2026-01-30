@@ -1,0 +1,55 @@
+---
+import BlogLayout from '@/layouts/BlogLayout.astro';
+import { getCollection, render } from 'astro:content';
+import { locales, defaultLocale, isValidLocale, type Locale } from '@/i18n/config';
+
+export async function getStaticPaths() {
+  const paths: { params: { lang: string; slug: string }; props: { post: any } }[] = [];
+
+  // Get all posts for non-default locales
+  for (const locale of locales) {
+    if (locale === defaultLocale) continue; // Skip default locale (handled by /blog/[...slug].astro)
+
+    const posts = await getCollection('blog', ({ data }) => {
+      return data.locale === locale && (import.meta.env.PROD ? data.draft !== true : true);
+    });
+
+    for (const post of posts) {
+      paths.push({
+        params: {
+          lang: locale,
+          slug: post.id.replace(`${locale}/`, ''),
+        },
+        props: { post },
+      });
+    }
+  }
+
+  return paths;
+}
+
+const { lang } = Astro.params;
+const { post } = Astro.props;
+
+if (!lang || !isValidLocale(lang)) {
+  return Astro.redirect('/blog');
+}
+
+const locale = lang as Locale;
+const { Content } = await render(post);
+---
+
+<BlogLayout
+  title={post.data.title}
+  description={post.data.description}
+  publishedAt={post.data.publishedAt}
+  updatedAt={post.data.updatedAt}
+  author={post.data.author}
+  image={post.data.image}
+  imageAlt={post.data.imageAlt}
+  tags={post.data.tags}
+  slug={post.id}
+  locale={locale}
+>
+  <Content />
+</BlogLayout>

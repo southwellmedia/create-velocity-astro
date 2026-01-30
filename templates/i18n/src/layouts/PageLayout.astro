@@ -1,0 +1,64 @@
+---
+/**
+ * PageLayout (i18n-aware)
+ * Layout wrapper for standard content pages (non-landing)
+ * Uses Header + Footer for consistent navigation with i18n support
+ *
+ * This layout differs from LandingLayout in that it:
+ * - Uses the standard Header/Footer instead of Navbar/LandingFooter
+ * - Adds proper top padding for fixed header
+ * - Is intended for content pages like About, Contact, etc.
+ */
+import BaseLayout from './BaseLayout.astro';
+import Header from '@/components/layout/Header.astro';
+import Footer from '@/components/layout/Footer.astro';
+import { type Locale, defaultLocale } from '@/i18n/config';
+import type { RouteId } from '@/i18n/routes';
+
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string;
+  imageAlt?: string;
+  noindex?: boolean;
+  nofollow?: boolean;
+  includeOrgSchema?: boolean;
+  lang?: Locale;
+  /**
+   * Route ID for generating proper hreflang tags with translated URLs.
+   */
+  routeId?: RouteId;
+}
+
+const {
+  title,
+  description,
+  image,
+  imageAlt,
+  noindex = false,
+  nofollow = false,
+  includeOrgSchema = false,
+  lang = defaultLocale,
+  routeId,
+} = Astro.props;
+---
+
+<BaseLayout
+  title={title}
+  description={description}
+  image={image}
+  imageAlt={imageAlt}
+  noindex={noindex}
+  nofollow={nofollow}
+  includeOrgSchema={includeOrgSchema}
+  lang={lang}
+  routeId={routeId}
+>
+  <Header slot="header" locale={lang} />
+
+  <main class="min-h-screen pt-16">
+    <slot />
+  </main>
+
+  <Footer slot="footer" locale={lang} />
+</BaseLayout>

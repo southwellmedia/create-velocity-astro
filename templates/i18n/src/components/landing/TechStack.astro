@@ -1,0 +1,58 @@
+---
+/**
+ * TechStack Component (i18n-aware)
+ * Displays the technology stack with translations
+ */
+import Icon from '@/components/ui/Icon.astro';
+import { type Locale, defaultLocale, getLocaleFromPath } from '@/i18n/config';
+import { useTranslations } from '@/i18n/index';
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale: localeProp } = Astro.props;
+const locale = localeProp || getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+
+const stack = [
+  {
+    name: t('techStack.astro.name'),
+    desc: t('techStack.astro.desc'),
+    icon: 'brand-astro' as const,
+  },
+  {
+    name: t('techStack.tailwind.name'),
+    desc: t('techStack.tailwind.desc'),
+    icon: 'brand-tailwind' as const,
+  },
+  {
+    name: t('techStack.typescript.name'),
+    desc: t('techStack.typescript.desc'),
+    icon: 'brand-typescript' as const,
+  },
+  {
+    name: t('techStack.motion.name'),
+    desc: t('techStack.motion.desc'),
+    icon: 'brand-react' as const,
+  },
+];
+---
+
+<section class="border-y border-border bg-background-secondary py-12">
+  <div class="mx-auto max-w-6xl px-6">
+    <div class="grid grid-cols-2 gap-8 md:grid-cols-4">
+      {stack.map((item) => (
+        <div class="flex flex-col items-center gap-2 text-center md:items-start md:text-left">
+          <div class="flex items-center gap-2 text-foreground font-display font-bold text-lg">
+            <span class="text-brand-500">
+              <Icon name={item.icon} size="md" />
+            </span>
+            {item.name}
+          </div>
+          <p class="text-sm text-foreground-muted font-medium">{item.desc}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

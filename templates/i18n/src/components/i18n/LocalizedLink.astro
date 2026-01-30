@@ -1,0 +1,49 @@
+---
+/**
+ * LocalizedLink Component
+ *
+ * A type-safe link component that generates locale-aware URLs.
+ * Use this instead of <a> tags when linking to internal pages
+ * to ensure translated URLs are used correctly.
+ *
+ * @example
+ * <LocalizedLink to="about">About Us</LocalizedLink>
+ * // → /about (en) or /es/sobre-nosotros (es) or /fr/a-propos (fr)
+ *
+ * @example
+ * <LocalizedLink to="blog" locale="fr">Blog en Français</LocalizedLink>
+ * // → /fr/blogue (always French)
+ */
+
+import { getLocalizedPath, type RouteId } from '@/i18n/helpers';
+import { type Locale, getLocaleFromPath } from '@/i18n/config';
+
+type AnchorProps = Omit<astroHTML.JSX.AnchorHTMLAttributes, 'href'>;
+
+interface Props extends AnchorProps {
+  /**
+   * The route ID to link to (e.g., 'home', 'about', 'blog', 'contact', 'components')
+   */
+  to: RouteId;
+  /**
+   * Override the locale (defaults to current page locale)
+   */
+  locale?: Locale;
+  /**
+   * Additional CSS classes
+   */
+  class?: string;
+}
+
+const { to, locale, class: className, ...attrs } = Astro.props;
+
+// Get current locale from URL if not explicitly provided
+const currentLocale = locale || getLocaleFromPath(Astro.url.pathname);
+
+// Generate the localized path
+const href = getLocalizedPath(to, currentLocale);
+---
+
+<a href={href} class={className} {...attrs}>
+  <slot />
+</a>

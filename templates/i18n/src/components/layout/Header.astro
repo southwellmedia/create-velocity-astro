@@ -1,0 +1,480 @@
+---
+/**
+ * Header Component (i18n-aware)
+ * Flexible navigation header with variant-based configuration and language switching
+ *
+ * Variants:
+ * - layout: 'default' | 'centered' | 'minimal'
+ * - position: 'fixed' | 'sticky' | 'static'
+ * - size: 'sm' | 'md' | 'lg'
+ * - variant: 'default' | 'solid' | 'transparent'
+ * - colorScheme: 'default' | 'invert' (use 'invert' for dark backgrounds)
+ *
+ * Features:
+ * - Dynamic navigation with translations
+ * - Language switcher integration
+ * - Optional CTA button
+ * - Mobile menu with Escape key support
+ * - Theme toggle
+ * - Full slot support for customization
+ */
+import type { HTMLAttributes } from 'astro/types';
+import { cn } from '@/lib/cn';
+import Button from '@/components/ui/Button.astro';
+import Icon from '@/components/ui/Icon.astro';
+import Logo from '@/components/ui/Logo.astro';
+import ThemeToggle from '@/components/layout/ThemeToggle.astro';
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher.astro';
+import siteConfig from '@/config/site.config';
+import { type Locale, defaultLocale, getLocaleFromPath } from '@/i18n/config';
+import { useTranslations, getLocalizedPath, getNavRoutes } from '@/i18n/index';
+
+export interface NavItem {
+  label: string;
+  href: string;
+}
+
+export interface HeaderAction {
+  icon: string;
+  href: string;
+  label: string;
+  iconOnly?: boolean;
+  target?: string;
+}
+
+interface Props extends HTMLAttributes<'header'> {
+  /** Locale for translations */
+  locale?: Locale;
+  /** Layout style: default (logo left, nav right), centered (logo center), minimal (logo + cta only) */
+  layout?: 'default' | 'centered' | 'minimal';
+  /** Position behavior */
+  position?: 'fixed' | 'sticky' | 'static';
+  /** Header height */
+  size?: 'sm' | 'md' | 'lg';
+  /** Background variant */
+  variant?: 'default' | 'solid' | 'transparent';
+  /** Color scheme for text/icons - use 'invert' for dark backgrounds */
+  colorScheme?: 'default' | 'invert';
+  /** Override default navigation */
+  nav?: NavItem[];
+  /** Additional navigation items (e.g., #features for landing pages) */
+  extraNav?: NavItem[];
+  /** Show CTA button */
+  showCta?: boolean;
+  /** CTA button configuration */
+  cta?: { label?: string; href?: string };
+  /** Action buttons (GitHub, etc.) */
+  actions?: HeaderAction[];
+  /** Show theme toggle (default: true) */
+  showThemeToggle?: boolean;
+  /** Show language switcher (default: true) */
+  showLanguageSwitcher?: boolean;
+  /** Show mobile menu (default: true) */
+  showMobileMenu?: boolean;
+  /** Show active state for current page (default: true) */
+  showActiveState?: boolean;
+  /** Logo text override */
+  logoText?: string;
+  /** Hide logo entirely */
+  hideLogo?: boolean;
+}
+
+const {
+  locale: localeProp,
+  layout = 'default',
+  position = 'sticky',
+  size = 'md',
+  variant = 'default',
+  colorScheme = 'default',
+  nav,
+  extraNav = [],
+  showCta = false,
+  cta = { label: 'Get Started', href: '#cta' },
+  actions = [],
+  showThemeToggle = true,
+  showLanguageSwitcher = true,
+  showMobileMenu = true,
+  showActiveState = true,
+  logoText,
+  hideLogo = false,
+  class: className,
+  ...attrs
+} = Astro.props;
+
+// Get locale from prop or infer from URL
+const locale = localeProp || getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+
+// Color scheme helpers
+const isInvert = colorScheme === 'invert';
+
+// Get navigation items from i18n routes or custom nav
+const defaultNav = getNavRoutes(locale);
+const navItems: NavItem[] = nav || [...extraNav, ...defaultNav.map(route => ({
+  label: route.label,
+  href: route.path,
+}))];
+
+// Current path for active state
+const currentPath = Astro.url.pathname;
+
+// Check if we're on the landing page
+const isLandingPage = currentPath === '/' || currentPath === `/${locale}` || currentPath === `/${locale}/`;
+
+// Process CTA href for landing page anchor links
+const ctaHref = cta.href?.startsWith('#') && !isLandingPage
+  ? `/${cta.href}`
+  : cta.href;
+
+// Check slots
+const hasLogoSlot = Astro.slots.has('logo');
+const hasNavSlot = Astro.slots.has('nav');
+const hasActionsSlot = Astro.slots.has('actions');
+const hasMobileMenuSlot = Astro.slots.has('mobile-menu');
+
+// Position variants
+const positions: Record<NonNullable<Props['position']>, string> = {
+  fixed: 'fixed top-0 left-0 right-0',
+  sticky: 'sticky top-0',
+  static: 'relative',
+};
+
+// Size variants (height)
+const sizes: Record<NonNullable<Props['size']>, string> = {
+  sm: 'h-12',    // 48px - compact
+  md: 'h-14',    // 56px - balanced
+  lg: 'h-16',    // 64px - spacious
+};
+
+// Background variants
+const variants: Record<NonNullable<Props['variant']>, string> = {
+  default: 'bg-background/80 backdrop-blur-lg border-b border-border/50',
+  solid: 'bg-background border-b border-border',
+  transparent: 'bg-transparent',
+};
+
+// Layout-specific container classes
+const containerClasses: Record<NonNullable<Props['layout']>, string> = {
+  default: 'flex items-center justify-between',
+  centered: 'flex items-center justify-between',
+  minimal: 'flex items-center justify-between',
+};
+
+// Compute header classes
+const headerClasses = cn(
+  'z-50 w-full',
+  positions[position],
+  variants[variant],
+  className
+);
+
+// Compute inner container classes
+const innerClasses = cn(
+  'mx-auto max-w-6xl px-6',
+  sizes[size],
+  containerClasses[layout]
+);
+
+// Check if a nav item is active
+function isActive(href: string): boolean {
+  if (!showActiveState) return false;
+  if (href.startsWith('#')) return false;
+  return currentPath === href || currentPath.startsWith(href + '/');
+}
+
+// Generate unique ID for this header instance
+const menuId = `mobile-menu-${Math.random().toString(36).slice(2, 9)}`;
+const buttonId = `${menuId}-button`;
+---
+
+<header class={headerClasses} {...attrs}>
+  <div class={innerClasses}>
+    {/* Logo */}
+    {!hideLogo && (
+      hasLogoSlot ? (
+        <slot name="logo" />
+      ) : (
+        <a href={getLocalizedPath('home', locale)} class="flex items-center gap-2">
+          <Logo size={size === 'lg' ? 'md' : 'sm'} forceDark={isInvert} />
+          <span class={cn(
+            'font-display text-xl font-bold tracking-tight',
+            isInvert ? 'text-on-invert' : 'text-brand-500'
+          )}>
+            {logoText || siteConfig.name}
+          </span>
+        </a>
+      )
+    )}
+
+    {/* Desktop Navigation */}
+    {layout !== 'minimal' && (
+      hasNavSlot ? (
+        <nav class="hidden items-center gap-1 md:flex" aria-label="Main navigation">
+          <slot name="nav" />
+        </nav>
+      ) : (
+        <nav class="hidden items-center gap-1 md:flex" aria-label="Main navigation">
+          {navItems.map(({ label, href }) => (
+            <a
+              href={href.startsWith('#') && !isLandingPage ? `/${href}` : href}
+              class={cn(
+                'nav-link px-3 py-2 text-sm rounded-md',
+                'transition-all duration-[--transition-fast]',
+                isActive(href)
+                  ? cn('nav-link-active font-semibold', isInvert ? 'text-on-invert bg-white/10' : 'text-foreground bg-secondary')
+                  : cn('nav-link-inactive font-medium', isInvert ? 'text-on-invert-secondary hover:text-on-invert hover:bg-white/10' : 'text-foreground-muted hover:text-foreground hover:bg-secondary/70')
+              )}
+              aria-current={isActive(href) ? 'page' : undefined}
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+      )
+    )}
+
+    {/* Actions Area */}
+    <div class="flex items-center gap-2">
+      {hasActionsSlot ? (
+        <slot name="actions" />
+      ) : (
+        <>
+          {showLanguageSwitcher && <LanguageSwitcher />}
+          {showThemeToggle && <ThemeToggle />}
+
+          {actions.map((action) => (
+            <Button
+              variant="ghost"
+              size="sm"
+              colorScheme={colorScheme}
+              icon={action.iconOnly}
+              href={action.href}
+              target={action.target}
+              aria-label={action.label}
+            >
+              <Icon name={action.icon} size="sm" />
+              {!action.iconOnly && action.label}
+            </Button>
+          ))}
+
+          {showCta && (
+            <Button size="sm" colorScheme={colorScheme} href={ctaHref}>
+              {cta.label}
+            </Button>
+          )}
+        </>
+      )}
+
+      {/* Mobile Menu Toggle */}
+      {showMobileMenu && layout !== 'minimal' && (
+        <button
+          type="button"
+          id={buttonId}
+          class={cn(
+            'md:hidden inline-flex items-center justify-center rounded-md p-2',
+            isInvert
+              ? 'text-on-invert-secondary hover:text-on-invert hover:bg-white/10'
+              : 'text-foreground-muted hover:text-foreground hover:bg-secondary',
+            'transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          )}
+          aria-expanded="false"
+          aria-controls={menuId}
+          aria-label="Toggle menu"
+        >
+          <span class="menu-icon">
+            <Icon name="menu" size="md" />
+          </span>
+          <span class="close-icon hidden">
+            <Icon name="x" size="md" />
+          </span>
+        </button>
+      )}
+    </div>
+  </div>
+
+  {/* Mobile Menu */}
+  {showMobileMenu && layout !== 'minimal' && (
+    hasMobileMenuSlot ? (
+      <div
+        id={menuId}
+        class="md:hidden hidden border-t border-border bg-background shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)] opacity-0 origin-top scale-y-0"
+        role="navigation"
+        aria-label="Mobile navigation"
+      >
+        <slot name="mobile-menu" />
+      </div>
+    ) : (
+      <div
+        id={menuId}
+        class="md:hidden hidden border-t border-border bg-background shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)] opacity-0 origin-top scale-y-0"
+        role="navigation"
+        aria-label="Mobile navigation"
+      >
+        <div class="mx-auto max-w-6xl px-6 py-4 space-y-1">
+          {navItems.map(({ label, href }) => (
+            <a
+              href={href.startsWith('#') && !isLandingPage ? `/${href}` : href}
+              class={cn(
+                'mobile-nav-link block px-3 py-2 rounded-md text-sm',
+                'transition-all duration-[--transition-fast]',
+                isActive(href)
+                  ? 'mobile-nav-link-active font-semibold bg-secondary text-foreground'
+                  : 'mobile-nav-link-inactive font-medium text-foreground-muted hover:bg-secondary/70 hover:text-foreground'
+              )}
+              aria-current={isActive(href) ? 'page' : undefined}
+            >
+              {label}
+            </a>
+          ))}
+
+          {showCta && (
+            <div class="mt-3 pt-3 border-t border-border">
+              <Button fullWidth href={ctaHref}>
+                {cta.label}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  )}
+</header>
+
+{/* Mobile Menu Backdrop - positioned outside header to blur page content */}
+{showMobileMenu && layout !== 'minimal' && (
+  <div
+    id={`${menuId}-backdrop`}
+    class="md:hidden fixed inset-0 opacity-0 pointer-events-none transition-opacity duration-200 z-40"
+    aria-hidden="true"
+  />
+)}
+
+<script define:vars={{ menuId, buttonId }}>
+  function initMobileMenu() {
+    const button = document.getElementById(buttonId);
+    const menu = document.getElementById(menuId);
+    const backdrop = document.getElementById(`${menuId}-backdrop`);
+    const header = button?.closest('header');
+    const menuIcon = button?.querySelector('.menu-icon');
+    const closeIcon = button?.querySelector('.close-icon');
+
+    if (!button || !menu || !menuIcon || !closeIcon) return;
+
+    let isOpen = false;
+    let isAnimating = false;
+
+    function open() {
+      if (isOpen || isAnimating) return;
+      isAnimating = true;
+      isOpen = true;
+
+      button.setAttribute('aria-expanded', 'true');
+      menuIcon.classList.add('hidden');
+      closeIcon.classList.remove('hidden');
+
+      // Add solid background to header
+      if (header) {
+        header.classList.add('!bg-background');
+      }
+
+      // Fade out and blur the page content
+      const mainContent = document.querySelector('main');
+      const footer = document.querySelector('footer');
+      if (mainContent) {
+        mainContent.style.transition = 'opacity 200ms, filter 200ms';
+        mainContent.style.opacity = '0.3';
+        mainContent.style.filter = 'blur(4px)';
+      }
+      if (footer) {
+        footer.style.transition = 'opacity 200ms, filter 200ms';
+        footer.style.opacity = '0.3';
+        footer.style.filter = 'blur(4px)';
+      }
+
+      // Show menu and backdrop with animations
+      menu.classList.remove('hidden', 'animate-menu-up', 'opacity-0', 'scale-y-0');
+      menu.classList.add('animate-menu-down');
+      if (backdrop) {
+        backdrop.classList.remove('pointer-events-none', 'animate-backdrop-out');
+        backdrop.classList.add('animate-backdrop');
+      }
+
+      isAnimating = false;
+    }
+
+    function close() {
+      if (!isOpen || isAnimating) return;
+      isAnimating = true;
+
+      button.setAttribute('aria-expanded', 'false');
+      menuIcon.classList.remove('hidden');
+      closeIcon.classList.add('hidden');
+
+      // Start closing animation
+      menu.classList.remove('animate-menu-down');
+      menu.classList.add('animate-menu-up');
+      if (backdrop) {
+        backdrop.classList.remove('animate-backdrop');
+        backdrop.classList.add('animate-backdrop-out');
+      }
+
+      // Restore page content
+      const mainContent = document.querySelector('main');
+      const footer = document.querySelector('footer');
+      if (mainContent) {
+        mainContent.style.opacity = '1';
+        mainContent.style.filter = 'none';
+      }
+      if (footer) {
+        footer.style.opacity = '1';
+        footer.style.filter = 'none';
+      }
+
+      // Wait for animation to complete before hiding
+      setTimeout(() => {
+        menu.classList.add('hidden', 'opacity-0', 'scale-y-0');
+        if (backdrop) {
+          backdrop.classList.add('pointer-events-none');
+        }
+        // Remove solid background from header
+        if (header) {
+          header.classList.remove('!bg-background');
+        }
+        isOpen = false;
+        isAnimating = false;
+      }, 200); // Match transition duration
+    }
+
+    function toggle() {
+      if (isOpen) {
+        close();
+      } else {
+        open();
+      }
+    }
+
+    button.addEventListener('click', toggle);
+
+    // Close on backdrop click
+    if (backdrop) {
+      backdrop.addEventListener('click', close);
+    }
+
+    // Close on Escape key
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && isOpen) {
+        close();
+      }
+    });
+
+    // Close when clicking on mobile menu links
+    menu.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', close);
+    });
+  }
+
+  initMobileMenu();
+  document.addEventListener('astro:page-load', initMobileMenu);
+  document.addEventListener('astro:after-swap', initMobileMenu);
+</script>

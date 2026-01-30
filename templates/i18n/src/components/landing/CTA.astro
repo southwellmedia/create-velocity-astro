@@ -1,0 +1,245 @@
+---
+/**
+ * CTA Component (i18n-aware)
+ * Reusable call-to-action section with translations and variants
+ *
+ * Variants:
+ * - variant: 'default' | 'invert' (color scheme)
+ * - size: 'sm' | 'md' | 'lg' | 'xl' (padding)
+ * - align: 'center' | 'left' (content alignment)
+ *
+ * Features:
+ * - Translations support
+ * - Heading with highlight
+ * - Optional logo
+ * - Slot-based customization
+ * - Copy-to-clipboard command button
+ */
+import type { HTMLAttributes } from 'astro/types';
+import Button from '@/components/ui/Button.astro';
+import Icon from '@/components/ui/Icon.astro';
+import Logo from '@/components/ui/Logo.astro';
+import { cn } from '@/lib/cn';
+import { type Locale, defaultLocale, getLocaleFromPath } from '@/i18n/config';
+import { useTranslations } from '@/i18n/index';
+
+interface Props extends HTMLAttributes<'section'> {
+  /** Locale for translations */
+  locale?: Locale;
+  /** Color scheme variant */
+  variant?: 'default' | 'invert';
+  /** Padding size */
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Max width of content */
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Show copy command button */
+  showCopyCommand?: boolean;
+  /** Command to copy (e.g., npm create velocity@latest) */
+  command?: string;
+}
+
+const {
+  locale: localeProp,
+  variant = 'default',
+  size = 'lg',
+  maxWidth = 'lg',
+  showCopyCommand = true,
+  command,
+  id = 'cta',
+  class: className,
+  ...attrs
+} = Astro.props;
+
+// Get locale from prop or infer from URL
+const locale = localeProp || getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+
+const isInvert = variant === 'invert';
+
+const sectionStyles = {
+  default: 'bg-background',
+  invert: 'bg-surface-invert',
+};
+
+const headingStyles = {
+  default: 'text-foreground',
+  invert: 'text-on-invert',
+};
+
+const descriptionStyles = {
+  default: 'text-foreground-muted',
+  invert: 'text-on-invert-secondary',
+};
+
+const highlightStyles = {
+  default: 'text-brand-500',
+  invert: 'text-brand-400',
+};
+
+const sizes = {
+  sm: 'py-[var(--space-section-sm)]',
+  md: 'py-[var(--space-section-md)]',
+  lg: 'py-[var(--space-section-lg)]',
+  xl: 'py-[var(--space-section-xl)]',
+};
+
+const maxWidths = {
+  sm: 'max-w-xl',
+  md: 'max-w-2xl',
+  lg: 'max-w-3xl',
+  xl: 'max-w-4xl',
+};
+
+// Use translations for default content
+const displayHeading = t('cta.title');
+const displayHighlight = t('cta.titleHighlight');
+const displayDescription = t('cta.description');
+const displayCommand = command || t('cta.command');
+const copiedText = t('common.copied');
+const docsLabel = t('cta.docs');
+
+// Process heading with highlight
+function processHeading(text: string, highlight?: string): string {
+  if (!highlight) return text;
+  return text.replace(highlight, `<span class="${highlightStyles[variant]}">${highlight}</span>`);
+}
+
+const hasLogoSlot = Astro.slots.has('logo');
+const hasHeadingSlot = Astro.slots.has('heading');
+const hasDescriptionSlot = Astro.slots.has('description');
+const hasActionsSlot = Astro.slots.has('actions');
+
+// Generate unique IDs for script
+const buttonId = `copy-command-${Math.random().toString(36).slice(2, 9)}`;
+---
+
+<section
+  id={id}
+  class={cn(sectionStyles[variant], sizes[size], className)}
+  {...attrs}
+>
+  <div class="mx-auto max-w-6xl px-6">
+    <div class={cn(maxWidths[maxWidth], 'text-center mx-auto')}>
+      {/* Logo Slot */}
+      {hasLogoSlot ? (
+        <div class="mb-[var(--space-stack-lg)]">
+          <slot name="logo" />
+        </div>
+      ) : (
+        <Logo
+          size="2xl"
+          forceDark={isInvert}
+          class="mb-[var(--space-stack-lg)] mx-auto"
+        />
+      )}
+
+      {/* Heading Slot */}
+      {hasHeadingSlot ? (
+        <div class={cn(
+          'mb-[var(--space-heading-gap)]',
+          '[&>h2]:font-display [&>h2]:text-3xl md:[&>h2]:text-4xl lg:[&>h2]:text-5xl [&>h2]:font-bold [&>h2]:text-balance',
+          isInvert ? '[&>h2]:text-on-invert' : '[&>h2]:text-foreground'
+        )}>
+          <slot name="heading" />
+        </div>
+      ) : (
+        <h2
+          class={cn(
+            'font-display text-3xl md:text-4xl lg:text-5xl font-bold text-balance mb-[var(--space-heading-gap)]',
+            headingStyles[variant]
+          )}
+          set:html={processHeading(displayHeading, displayHighlight)}
+        />
+      )}
+
+      {/* Description Slot */}
+      {hasDescriptionSlot ? (
+        <div class={cn(
+          'text-lg md:text-xl mb-[var(--space-stack-lg)]',
+          '[&>p]:text-lg md:[&>p]:text-xl',
+          isInvert ? 'text-on-invert-secondary [&>p]:text-on-invert-secondary' : 'text-foreground-muted [&>p]:text-foreground-muted'
+        )}>
+          <slot name="description" />
+        </div>
+      ) : (
+        <p class={cn('text-lg md:text-xl mb-[var(--space-stack-lg)]', descriptionStyles[variant])}>
+          {displayDescription}
+        </p>
+      )}
+
+      {/* Actions Slot */}
+      {hasActionsSlot ? (
+        <div class="flex flex-col gap-4 sm:flex-row items-center justify-center">
+          <slot name="actions" />
+        </div>
+      ) : showCopyCommand && (
+        <div class="flex flex-col gap-4 sm:flex-row items-center justify-center">
+          <button
+            type="button"
+            id={buttonId}
+            class="bg-foreground text-background hover:bg-foreground/90 focus-visible:ring-ring inline-flex h-10 items-center justify-center gap-2 rounded-md px-5 text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.98]"
+            data-command={displayCommand}
+            data-copied={copiedText}
+          >
+            <Icon name="terminal" size="md" />
+            <span class="command-text">{displayCommand}</span>
+            <span class="copy-icon text-secondary ml-1">
+              <Icon name="copy" size="sm" />
+            </span>
+            <span class="check-icon text-success ml-1 hidden">
+              <Icon name="check" size="sm" />
+            </span>
+          </button>
+          <Button
+            variant="outline"
+            size="lg"
+            href="https://github.com/southwellmedia/velocity"
+            target="_blank"
+          >
+            <Icon name="book" size="md" />
+            {docsLabel}
+          </Button>
+        </div>
+      )}
+
+      <slot />
+    </div>
+  </div>
+</section>
+
+<script define:vars={{ buttonId }}>
+  function initCopyButton() {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    const copyIcon = button.querySelector('.copy-icon');
+    const checkIcon = button.querySelector('.check-icon');
+    const commandText = button.querySelector('.command-text');
+
+    if (!copyIcon || !checkIcon || !commandText) return;
+
+    const command = button.dataset.command || 'npm create velocity@latest';
+    const copiedText = button.dataset.copied || 'Copied!';
+
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(command);
+
+        copyIcon.classList.add('hidden');
+        checkIcon.classList.remove('hidden');
+        commandText.textContent = copiedText;
+
+        setTimeout(() => {
+          copyIcon.classList.remove('hidden');
+          checkIcon.classList.add('hidden');
+          commandText.textContent = command;
+        }, 2000);
+      } catch {
+        // Clipboard API failed - user will need to copy manually
+      }
+    });
+  }
+
+  initCopyButton();
+  document.addEventListener('astro:page-load', initCopyButton);
+</script>
