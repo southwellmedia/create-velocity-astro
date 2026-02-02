@@ -1,6 +1,6 @@
 {
   "name": "create-velocity-astro",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "Create Velocity - A CLI to scaffold production-ready Astro 6 + Tailwind v4 projects",
   "type": "module",
   "license": "MIT",
