@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/southwellmedia/create-velocity-astro/main/.github/logo.svg" alt="Velocity" width="320" />
+  <img src="https://raw.githubusercontent.com/southwellmedia/velocity/main/public/velocity-lightmode.svg" alt="Velocity" width="320" />
 </p>
 
 <h1 align="center">create-velocity-astro</h1>
