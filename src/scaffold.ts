@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, writeFileSync, rmSync, statSync } from 'node:fs';
+import { join, dirname, relative } from 'node:path';
 import * as p from '@clack/prompts';
 import { execa } from 'execa';
 import { downloadTemplate } from 'giget';
@@ -99,7 +99,52 @@ function removeItems(targetDir: string, items: string[]): void {
 }
 
 /**
- * Keeps only specified files, removes everything else in optional component directories
+ * Recursively collects all file paths relative to the project root
+ */
+function walkFilesRelative(absDir: string, relativeBase: string): string[] {
+  const results: string[] = [];
+  if (!existsSync(absDir)) return results;
+
+  const entries = readdirSync(absDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const absPath = join(absDir, entry.name);
+    const relPath = `${relativeBase}/${entry.name}`;
+    if (entry.isDirectory()) {
+      results.push(...walkFilesRelative(absPath, relPath));
+    } else {
+      results.push(relPath);
+    }
+  }
+  return results;
+}
+
+/**
+ * Recursively removes empty directories bottom-up
+ */
+function removeEmptyDirs(dir: string): void {
+  if (!existsSync(dir)) return;
+
+  const entries = readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      removeEmptyDirs(join(dir, entry.name));
+    }
+  }
+
+  // Re-read after cleaning children
+  const remaining = readdirSync(dir);
+  if (remaining.length === 0) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // Ignore errors
+    }
+  }
+}
+
+/**
+ * Keeps only specified files, removes everything else in optional component directories.
+ * Walks recursively to handle nested subcategory folders (e.g. ui/form/Button/).
  */
 function keepOnlyFiles(targetDir: string, filesToKeep: Set<string>): void {
   // Only filter optional component directories - core template dirs are untouched
@@ -113,29 +158,20 @@ function keepOnlyFiles(targetDir: string, filesToKeep: Set<string>): void {
     const dirPath = join(targetDir, dir);
     if (!existsSync(dirPath)) continue;
 
-    const entries = readdirSync(dirPath, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isFile()) {
-        const relativePath = `${dir}/${entry.name}`;
-        if (!filesToKeep.has(relativePath)) {
-          try {
-            rmSync(join(dirPath, entry.name), { force: true });
-          } catch {
-            // Ignore errors
-          }
+    // Recursively walk all files in the directory
+    const allFiles = walkFilesRelative(dirPath, dir);
+    for (const relativePath of allFiles) {
+      if (!filesToKeep.has(relativePath)) {
+        try {
+          rmSync(join(targetDir, relativePath), { force: true });
+        } catch {
+          // Ignore errors
         }
       }
     }
 
-    // Remove empty directories
-    try {
-      const remaining = readdirSync(dirPath);
-      if (remaining.length === 0) {
-        rmSync(dirPath, { recursive: true, force: true });
-      }
-    } catch {
-      // Ignore errors
-    }
+    // Clean up empty directories (bottom-up)
+    removeEmptyDirs(dirPath);
   }
 }
 

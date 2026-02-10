@@ -6,7 +6,7 @@
 
 <p align="center">Scaffold and upgrade production-ready <a href="https://github.com/southwellmedia/velocity">Velocity</a> projects in seconds.</p>
 
-Velocity is an opinionated Astro 6 + Tailwind CSS v4 starter kit with 27+ components, i18n support, SEO optimization, and deployment-ready configuration.
+Velocity is an opinionated Astro 6 + Tailwind CSS v4 starter kit with 40+ components, i18n support, SEO optimization, and deployment-ready configuration.
 
 ## Quick Start
 
@@ -84,8 +84,8 @@ The `--components` flag controls which UI components are included:
 
 | Category | Components | Count |
 |----------|------------|-------|
-| `ui` | Button, Input, Card, Badge, Alert, Dialog, Tabs, Select, Checkbox, Radio, Textarea, Tooltip, Dropdown, Skeleton, Logo, CodeBlock, SocialProof, Avatar, TerminalDemo, VerticalTabs, CTA | 21 |
-| `patterns` | ContactForm, NewsletterForm, FormField | 3 |
+| `ui` | Button, Input, Textarea, Select, Checkbox, Radio, Switch, Card, Badge, Avatar, AvatarGroup, Table, Pagination, Progress, Skeleton, Alert, Toast, Tooltip, Dialog, Dropdown, Tabs, VerticalTabs, Accordion, Separator, Icon, CodeBlock, Logo, CTA, NpmCopyButton, SocialProof, TerminalDemo | 31 |
+| `patterns` | ContactForm, NewsletterForm, FormField, SearchInput, PasswordInput, StatCard, EmptyState | 7 |
 | `hero` | Hero (flexible hero section) | 1 |
 
 ## Component Features
@@ -297,7 +297,7 @@ Every Velocity project includes:
 | Feature | Flag | Description |
 |---------|------|-------------|
 | Demo content | `--demo` | Landing page, sample blog posts, about/contact pages |
-| UI Components | `--components` | 27+ production-ready components |
+| UI Components | `--components` | 40+ production-ready components |
 | i18n Support | `--i18n` | Multi-language routing and translations |
 | Starter Pages | `--pages` | Generate custom pages interactively |
 

@@ -35,8 +35,8 @@ ${pc.bold('Options:')}
   --version, -v       Show version number
 
 ${pc.bold('Component Categories:')}
-  ui        UI components (buttons, forms, cards, dialogs) - 20 components
-  patterns  Form patterns (contact form, newsletter) - 3 components
+  ui        UI components (buttons, forms, cards, dialogs) - 31 components
+  patterns  Form patterns (contact form, newsletter, search) - 7 components
   hero      Flexible hero section component - 1 component
 
 ${pc.bold('Examples:')}

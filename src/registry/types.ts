@@ -23,6 +23,7 @@ export interface ComponentDependencies {
 export interface ComponentEntry {
   name: string;
   category: string;
+  subcategory?: string;
   files: string[];
   dependencies: ComponentDependencies;
   premium: boolean;

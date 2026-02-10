@@ -136,7 +136,7 @@ import PricingCalculator from '../components/PricingCalculator.tsx';
   },
   components: {
     lang: 'typescript',
-    code: `// src/components/ui/Button.tsx
+    code: `// src/components/ui/form/Button/Button.tsx
 import { forwardRef } from 'react';
 import { cn } from '@/lib/cn';
 
@@ -162,7 +162,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     </button>
   )
 );`,
-    filename: 'src/components/ui/Button.tsx',
+    filename: 'src/components/ui/form/Button/Button.tsx',
   },
   i18n: {
     lang: 'typescript',
