@@ -460,4 +460,17 @@ export const fr: TranslationKeys = {
       readDocs: 'Lire la Documentation',
     },
   },
+
+  // Consent Banner
+  consent: {
+    heading: 'Préférences de Cookies',
+    description: 'Nous utilisons des cookies pour améliorer votre expérience de navigation, proposer du contenu personnalisé et analyser notre trafic.',
+    acceptAll: 'Tout Accepter',
+    declineAll: 'Tout Refuser',
+    customize: 'Personnaliser',
+    savePreferences: 'Enregistrer les Préférences',
+    settingsHeading: 'Paramètres de Confidentialité',
+    privacyPolicyLabel: 'Politique de Confidentialité',
+    alwaysOn: 'Toujours actif',
+  },
 } as const;

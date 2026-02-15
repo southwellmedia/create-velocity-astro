@@ -458,6 +458,19 @@ export const en = {
       readDocs: 'Read Documentation',
     },
   },
+
+  // Consent Banner
+  consent: {
+    heading: 'Cookie Preferences',
+    description: 'We use cookies to enhance your browsing experience, serve personalized content, and analyze our traffic.',
+    acceptAll: 'Accept All',
+    declineAll: 'Decline All',
+    customize: 'Customize',
+    savePreferences: 'Save Preferences',
+    settingsHeading: 'Privacy Settings',
+    privacyPolicyLabel: 'Privacy Policy',
+    alwaysOn: 'Always on',
+  },
 } as const;
 
 export type TranslationKeys = typeof en;

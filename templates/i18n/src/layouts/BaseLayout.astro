@@ -4,10 +4,12 @@ import SEO from '@/components/seo/SEO.astro';
 import JsonLd from '@/components/seo/JsonLd.astro';
 import Hreflang from '@/components/i18n/Hreflang.astro';
 import Analytics from '@/components/layout/Analytics.astro';
+import ConsentBanner from '@/components/ui/overlay/ConsentBanner';
 import { createWebsiteSchema, createOrganizationSchema } from '@/lib/schema';
 import type { WebSite, Organization, WithContext } from 'schema-dts';
 import siteConfig from '@/config/site.config';
 import { type Locale, defaultLocale, getLocaleFromPath } from '@/i18n/config';
+import { useTranslations } from '@/i18n/index';
 import type { RouteId } from '@/i18n/routes';
 
 interface Props {
@@ -47,6 +49,20 @@ const {
 
 // Get locale from props or URL path
 const currentLocale = lang || getLocaleFromPath(Astro.url.pathname);
+
+// Build translated consent UI text
+const tc = useTranslations(currentLocale);
+const consentUi = {
+  heading: tc('consent.heading'),
+  description: tc('consent.description'),
+  acceptAll: tc('consent.acceptAll'),
+  declineAll: tc('consent.declineAll'),
+  customize: tc('consent.customize'),
+  savePreferences: tc('consent.savePreferences'),
+  settingsHeading: tc('consent.settingsHeading'),
+  privacyPolicyLabel: tc('consent.privacyPolicyLabel'),
+};
+const consentAlwaysOnLabel = tc('consent.alwaysOn');
 
 // Build JSON-LD schemas
 const schemas: Array<WithContext<WebSite> | WithContext<Organization>> = [createWebsiteSchema()];
@@ -139,5 +155,7 @@ if (includeOrgSchema) {
     </main>
 
     <slot name="footer" />
+
+    <ConsentBanner ui={consentUi} alwaysOnLabel={consentAlwaysOnLabel} />
   </body>
 </html>
