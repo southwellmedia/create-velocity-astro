@@ -14,6 +14,7 @@ import {
   showChangeSummary,
   confirmUpgrade,
   showManualSteps,
+  showProtectedNotice,
   showUpgradeOutro,
   warnDirtyGit,
 } from './upgrade-prompts.js';
@@ -76,6 +77,29 @@ function isVersionLessThan(current: string, required: string): boolean {
     if (av > bv) return false;
   }
   return false;
+}
+
+/**
+ * Filters migrations to only those applicable for the user's version range.
+ * A migration applies if:
+ *   - No fromVersion/toVersion: always applies (legacy behavior)
+ *   - If toVersion is set and user's current version is NOT less than toVersion, skip (user already past this migration)
+ *   - If fromVersion is set and user's current version IS less than fromVersion, skip (user hasn't reached the version where this migration matters)
+ *   - Otherwise, include it
+ */
+function filterMigrations(migrations: MigrationStep[], currentVersion: string): MigrationStep[] {
+  return migrations.filter((m) => {
+    // No version constraints — always show (legacy)
+    if (!m.fromVersion && !m.toVersion) return true;
+
+    // User already past this migration's target version
+    if (m.toVersion && !isVersionLessThan(currentVersion, m.toVersion)) return false;
+
+    // User hasn't reached the starting version for this migration
+    if (m.fromVersion && isVersionLessThan(currentVersion, m.fromVersion)) return false;
+
+    return true;
+  });
 }
 
 /**
@@ -290,6 +314,9 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     process.exit(1);
   }
 
+  // Filter migrations to only those relevant to the user's current version
+  manifest.migrations = filterMigrations(manifest.migrations, config.version);
+
   // Check if already on latest version
   if (config.version === manifest.version) {
     showUpgradeIntro(config.version, manifest.version);
@@ -329,7 +356,8 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   const shouldProceed = await confirmUpgrade(dryRun);
 
   if (dryRun) {
-    // In dry-run mode, still show manual migration steps
+    // In dry-run mode, still show protected notice and manual migration steps
+    showProtectedNotice(manifest);
     const matchResults = scanForMigrationPatterns(targetDir, manifest.migrations);
     showManualSteps(manifest.migrations, matchResults);
     p.outro(pc.dim('Dry run complete. No changes were made.'));
@@ -390,11 +418,14 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   }
   p.log.success(pc.green('Updated .velocity.json'));
 
-  // 7. Scan for migration patterns and show manual steps
+  // 7. Show protected file notice
+  showProtectedNotice(manifest);
+
+  // 8. Scan for migration patterns and show manual steps
   const matchResults = scanForMigrationPatterns(targetDir, manifest.migrations);
   showManualSteps(manifest.migrations, matchResults);
 
-  // 8. Show outro
+  // 9. Show outro
   showUpgradeOutro(hasDepChanges);
 
   cleanup(tempDir);

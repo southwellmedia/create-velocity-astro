@@ -23,35 +23,83 @@ export function showChangeSummary(
   manifest: UpgradeManifest
 ): void {
   const { added, modified } = summarizeDiffs(diffs);
-  const depUpdated = Object.keys(manifest.dependencies.update).length;
-  const depRemoved = manifest.dependencies.remove.length;
-  const depAdded = Object.keys(manifest.dependencies.add).length;
   const migrationCount = manifest.migrations.length;
 
   const lines: string[] = [];
 
-  if (modified > 0) {
-    lines.push(`  ${pc.yellow(`${modified}`)} file${modified !== 1 ? 's' : ''} modified ${pc.dim('(framework components, layouts, utilities)')}`);
+  // List specific files that will be modified
+  const modifiedFiles = diffs.filter((d) => d.status === 'modified');
+  const addedFiles = diffs.filter((d) => d.status === 'added');
+
+  if (modifiedFiles.length > 0) {
+    lines.push(pc.bold('  Files to update:'));
+    for (const f of modifiedFiles) {
+      lines.push(`    ${pc.yellow('~')} ${f.path}`);
+    }
   }
-  if (added > 0) {
-    lines.push(`  ${pc.green(`${added}`)} file${added !== 1 ? 's' : ''} added ${pc.dim('(new framework files)')}`);
+  if (addedFiles.length > 0) {
+    lines.push(pc.bold('  New files:'));
+    for (const f of addedFiles) {
+      lines.push(`    ${pc.green('+')} ${f.path}`);
+    }
   }
-  if (depUpdated > 0) {
-    lines.push(`  ${pc.cyan(`${depUpdated}`)} dependenc${depUpdated !== 1 ? 'ies' : 'y'} updated`);
+
+  // List specific dependency changes
+  const depUpdates = Object.entries(manifest.dependencies.update);
+  const depRemoves = manifest.dependencies.remove;
+  const depAdds = Object.entries(manifest.dependencies.add);
+
+  if (depUpdates.length > 0 || depRemoves.length > 0 || depAdds.length > 0) {
+    lines.push(pc.bold('  Dependency changes:'));
+    for (const [name, version] of depUpdates) {
+      lines.push(`    ${pc.cyan('~')} ${name} → ${version}`);
+    }
+    for (const name of depRemoves) {
+      lines.push(`    ${pc.red('-')} ${name}`);
+    }
+    for (const [name, version] of depAdds) {
+      lines.push(`    ${pc.green('+')} ${name}@${version}`);
+    }
   }
-  if (depRemoved > 0) {
-    lines.push(`  ${pc.red(`${depRemoved}`)} dependenc${depRemoved !== 1 ? 'ies' : 'y'} removed`);
-  }
-  if (depAdded > 0) {
-    lines.push(`  ${pc.green(`${depAdded}`)} dependenc${depAdded !== 1 ? 'ies' : 'y'} added`);
-  }
+
   if (migrationCount > 0) {
-    lines.push(`  ${pc.yellow(`${migrationCount}`)} manual migration step${migrationCount !== 1 ? 's' : ''}`);
+    lines.push(`  ${pc.yellow(`${migrationCount}`)} manual migration step${migrationCount !== 1 ? 's' : ''} ${pc.dim('(shown after upgrade)')}`);
   }
+
+  // Summary counts
+  const summary = [];
+  if (modified > 0) summary.push(`${modified} updated`);
+  if (added > 0) summary.push(`${added} added`);
+  summary.push(`${manifest.files.protected.length} protected ${pc.dim('(not touched)')}`);
+
+  lines.push('');
+  lines.push(`  ${pc.dim('Totals: ' + summary.join(', '))}`);
 
   if (lines.length > 0) {
     p.log.message(pc.bold('Changes to apply:') + '\n' + lines.join('\n'));
   }
+}
+
+/**
+ * Shows a notice about protected files that may need manual attention.
+ */
+export function showProtectedNotice(manifest: UpgradeManifest): void {
+  const protectedFiles = manifest.files.protected;
+  if (protectedFiles.length === 0) return;
+
+  const lines = [
+    `The following files were ${pc.bold('not modified')} to preserve your customizations:`,
+    '',
+  ];
+
+  for (const f of protectedFiles) {
+    lines.push(`  ${pc.dim('-')} ${f}`);
+  }
+
+  lines.push('');
+  lines.push(pc.dim('If the upgrade requires changes to these files, they will appear in the manual steps below.'));
+
+  p.log.info(lines.join('\n'));
 }
 
 /**

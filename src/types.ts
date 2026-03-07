@@ -67,6 +67,8 @@ export interface MigrationStep {
   description: string;
   pattern?: string;
   searchPaths?: string[];
+  fromVersion?: string;  // Only show if user's version >= this
+  toVersion?: string;    // Only show if user's version < this
 }
 
 export interface UpgradeOptions {
