@@ -8,13 +8,14 @@ import { downloadTemplate } from 'giget';
 import type { UpgradeOptions, UpgradeManifest, MigrationStep } from './types.js';
 import { readVelocityConfig, writeVelocityConfig } from './utils/velocity-config.js';
 import { readJson } from './utils/fs.js';
-import { diffProjects, summarizeDiffs } from './utils/diff.js';
+import { diffProjects, summarizeDiffs, computeFileHashes } from './utils/diff.js';
 import {
   showUpgradeIntro,
   showChangeSummary,
   confirmUpgrade,
   showManualSteps,
   showProtectedNotice,
+  showConflictNotice,
   showUpgradeOutro,
   warnDirtyGit,
 } from './upgrade-prompts.js';
@@ -225,6 +226,34 @@ function mergePackageJsonDeps(
 }
 
 /**
+ * Backs up conflicting files to .velocity-backup/<version>/.
+ * Returns the backup directory path.
+ */
+function backupConflicts(
+  targetDir: string,
+  conflicts: { path: string }[],
+  fromVersion: string
+): string {
+  const backupDir = join(targetDir, '.velocity-backup', fromVersion);
+
+  for (const conflict of conflicts) {
+    const srcPath = join(targetDir, conflict.path);
+    const destPath = join(backupDir, conflict.path);
+    const destDir = dirname(destPath);
+
+    if (!existsSync(destDir)) {
+      mkdirSync(destDir, { recursive: true });
+    }
+
+    if (existsSync(srcPath)) {
+      copyFileSync(srcPath, destPath);
+    }
+  }
+
+  return backupDir;
+}
+
+/**
  * Main upgrade orchestration function.
  */
 export async function upgrade(options: UpgradeOptions): Promise<void> {
@@ -332,12 +361,12 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     return;
   }
 
-  // 4. Diff safe files
-  const diffs = diffProjects(targetDir, tempDir, manifest);
-  const { added, modified } = summarizeDiffs(diffs);
+  // 4. Diff safe files, passing stored hashes for user-modification detection
+  const diffs = diffProjects(targetDir, tempDir, manifest, config.fileHashes);
+  const { added, modified, conflict } = summarizeDiffs(diffs);
 
   // If no changes at all
-  if (added === 0 && modified === 0 &&
+  if (added === 0 && modified === 0 && conflict === 0 &&
       Object.keys(manifest.dependencies.update).length === 0 &&
       manifest.dependencies.remove.length === 0 &&
       Object.keys(manifest.dependencies.add).length === 0) {
@@ -359,7 +388,7 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   showUpgradeIntro(config.version, manifest.version);
   showChangeSummary(diffs, manifest);
 
-  const shouldProceed = await confirmUpgrade(dryRun);
+  const shouldProceed = await confirmUpgrade(dryRun, yes);
 
   if (dryRun) {
     // In dry-run mode, still show protected notice and manual migration steps
@@ -379,8 +408,17 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   // 6. Apply changes
   spinner.start('Applying changes...');
 
-  // 6a. Copy modified/added safe files
-  const changedDiffs = diffs.filter((d) => d.status === 'added' || d.status === 'modified');
+  // 6a. Back up conflicting files before overwriting
+  const conflictDiffs = diffs.filter((d) => d.status === 'conflict');
+  let backupDir = '';
+  if (conflictDiffs.length > 0) {
+    backupDir = backupConflicts(targetDir, conflictDiffs, config.version);
+  }
+
+  // 6b. Copy modified, added, and conflicting safe files (conflicts get template version)
+  const changedDiffs = diffs.filter(
+    (d) => d.status === 'added' || d.status === 'modified' || d.status === 'conflict'
+  );
   for (const diff of changedDiffs) {
     const src = join(tempDir, diff.path);
     const dest = join(targetDir, diff.path);
@@ -393,7 +431,7 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     copyFileSync(src, dest);
   }
 
-  // 6b. Merge package.json dependencies
+  // 6c. Merge package.json dependencies
   const hasDepChanges =
     Object.keys(manifest.dependencies.update).length > 0 ||
     manifest.dependencies.remove.length > 0 ||
@@ -403,11 +441,15 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     mergePackageJsonDeps(targetDir, manifest);
   }
 
-  // 6c. Update .velocity.json
+  // 6d. Compute and store file hashes for the new state
+  const newHashes = computeFileHashes(targetDir, manifest.files.safe);
+
+  // 6e. Update .velocity.json with new version and file hashes
   writeVelocityConfig(targetDir, {
     ...config,
     version: manifest.version,
     updatedAt: new Date().toISOString().slice(0, 10),
+    fileHashes: newHashes,
   });
 
   spinner.stop('Changes applied');
@@ -424,14 +466,19 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   }
   p.log.success(pc.green('Updated .velocity.json'));
 
-  // 7. Show protected file notice
+  // 7. Show conflict notice (before protected notice, as it's more urgent)
+  if (conflictDiffs.length > 0) {
+    showConflictNotice(backupDir, conflictDiffs);
+  }
+
+  // 8. Show protected file notice
   showProtectedNotice(manifest);
 
-  // 8. Scan for migration patterns and show manual steps
+  // 9. Scan for migration patterns and show manual steps
   const matchResults = scanForMigrationPatterns(targetDir, manifest.migrations);
   showManualSteps(manifest.migrations, matchResults);
 
-  // 9. Show outro
+  // 10. Show outro
   showUpgradeOutro(hasDepChanges);
 
   cleanup(tempDir);

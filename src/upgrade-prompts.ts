@@ -22,10 +22,19 @@ export function showChangeSummary(
   diffs: FileDiff[],
   manifest: UpgradeManifest
 ): void {
-  const { added, modified } = summarizeDiffs(diffs);
+  const { added, modified, conflict } = summarizeDiffs(diffs);
   const migrationCount = manifest.migrations.length;
 
   const lines: string[] = [];
+
+  // List conflict files first (most important)
+  const conflictFiles = diffs.filter((d) => d.status === 'conflict');
+  if (conflictFiles.length > 0) {
+    lines.push(pc.bold(pc.yellow('  Conflicts (user-modified files that also changed in template):')));
+    for (const f of conflictFiles) {
+      lines.push(`    ${pc.yellow('⚠')} ${f.path} ${pc.dim('→ backup created, template version applied')}`);
+    }
+  }
 
   // List specific files that will be modified
   const modifiedFiles = diffs.filter((d) => d.status === 'modified');
@@ -70,6 +79,7 @@ export function showChangeSummary(
   const summary = [];
   if (modified > 0) summary.push(`${modified} updated`);
   if (added > 0) summary.push(`${added} added`);
+  if (conflict > 0) summary.push(`${pc.yellow(`${conflict} conflicts`)}`);
   summary.push(`${manifest.files.protected.length} protected ${pc.dim('(not touched)')}`);
 
   lines.push('');
@@ -103,13 +113,41 @@ export function showProtectedNotice(manifest: UpgradeManifest): void {
 }
 
 /**
+ * Shows a notice about conflict files that were backed up.
+ */
+export function showConflictNotice(backupDir: string, conflicts: FileDiff[]): void {
+  if (conflicts.length === 0) return;
+
+  const lines = [
+    pc.yellow(`${conflicts.length} file${conflicts.length !== 1 ? 's were' : ' was'} backed up because you modified ${conflicts.length !== 1 ? 'them' : 'it'}:`),
+    '',
+  ];
+
+  for (const f of conflicts) {
+    lines.push(`  ${pc.yellow('⚠')} ${f.path}`);
+  }
+
+  lines.push('');
+  lines.push(`Your versions are saved in: ${pc.cyan(backupDir)}`);
+  lines.push(pc.dim('Compare your backup against the new version and merge your customizations back in.'));
+
+  p.log.warning(lines.join('\n'));
+}
+
+/**
  * Asks user to confirm the upgrade. Returns true to proceed.
  * In dry-run mode, shows what would happen without asking.
+ * With --yes flag, skips the interactive prompt.
  */
-export async function confirmUpgrade(dryRun: boolean): Promise<boolean> {
+export async function confirmUpgrade(dryRun: boolean, yes: boolean): Promise<boolean> {
   if (dryRun) {
     p.log.info(pc.dim('Dry run — no changes will be made.'));
     return false;
+  }
+
+  if (yes) {
+    p.log.info(pc.dim('Proceeding with upgrade (--yes).'));
+    return true;
   }
 
   const proceed = await p.confirm({

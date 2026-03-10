@@ -45,6 +45,8 @@ export interface VelocityConfig {
     i18n: boolean;
     components: string;
   };
+  /** SHA-256 hashes of safe files at last scaffold/upgrade, keyed by relative path */
+  fileHashes?: Record<string, string>;
 }
 
 export interface UpgradeManifest {
@@ -79,6 +81,6 @@ export interface UpgradeOptions {
 
 export interface FileDiff {
   path: string;
-  status: 'added' | 'modified' | 'unchanged' | 'removed';
+  status: 'added' | 'modified' | 'unchanged' | 'removed' | 'conflict';
   category: 'safe' | 'protected';
 }

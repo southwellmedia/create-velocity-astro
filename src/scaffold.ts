@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, writeFileSync, rmSync, statSync } from 'node:fs';
-import { join, dirname, relative } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import * as p from '@clack/prompts';
 import { execa } from 'execa';
 import { downloadTemplate } from 'giget';
@@ -14,6 +14,7 @@ import { fetchRegistry } from './registry/fetcher.js';
 import { resolveDependencies } from './registry/resolver.js';
 import { createInitialConfig, writeVelocityConfig } from './utils/velocity-config.js';
 import { readJson } from './utils/fs.js';
+import { computeFileHashes } from './utils/diff.js';
 
 // GitHub repository for the Velocity template
 const TEMPLATE_REPO = 'github:southwellmedia/velocity';
@@ -376,6 +377,15 @@ export async function scaffold(options: ScaffoldOptions): Promise<void> {
     }
 
     const velocityConfig = createInitialConfig(options, templateVersion);
+
+    // Compute file hashes for upgrade conflict detection
+    if (existsSync(manifestPath)) {
+      const manifest = readJson<{ files?: { safe?: string[] } }>(manifestPath);
+      if (manifest.files?.safe) {
+        velocityConfig.fileHashes = computeFileHashes(targetDir, manifest.files.safe);
+      }
+    }
+
     writeVelocityConfig(targetDir, velocityConfig);
   } catch {
     // Non-fatal — project still usable without .velocity.json
