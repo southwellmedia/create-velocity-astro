@@ -31,12 +31,18 @@ const FALLBACK_SAFE_FILES = [
   'src/layouts/',
   'src/lib/',
   'src/styles/tokens/',
+  'src/styles/themes/',
   'src/styles/global.css',
   'src/content.config.ts',
+  'src/config/nav.config.ts',
   'tsconfig.json',
   'eslint.config.js',
   '.prettierrc',
   '.prettierignore',
+  '.gitignore',
+  'vercel.json',
+  'netlify.toml',
+  'wrangler.toml',
 ];
 
 /**
