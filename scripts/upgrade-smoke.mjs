@@ -8,13 +8,15 @@
  * Requires a built CLI (`npm run build`), pnpm on PATH and network access.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mri from 'mri';
 
 const OLD_CLI = 'create-velocity-astro@1.8.1';
+// 1.x always downloads Velocity's main branch, so pin it to the release it shipped with
+const OLD_VELOCITY = 'v1.0.0';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = mri(process.argv.slice(2), { string: ['template', 'only'], boolean: ['keep'] });
 
@@ -44,12 +46,27 @@ function run(cmd, list, cwd, env = {}) {
   return { ok: r.status === 0, output: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
+// Install the old CLI and pin what it downloads
+const oldCliDir = join(workDir, '.old-cli');
+const installed = run('npm', ['install', '--prefix', oldCliDir, OLD_CLI], workDir);
+if (!installed.ok) {
+  console.log(installed.output);
+  process.exit(1);
+}
+const oldCli = join(oldCliDir, 'node_modules', 'create-velocity-astro', 'dist', 'index.js');
+const source = readFileSync(oldCli, 'utf8');
+const pinned = source
+  .replaceAll('github:southwellmedia/velocity', `github:southwellmedia/velocity#${OLD_VELOCITY}`)
+  .replaceAll('southwellmedia/velocity/main/', `southwellmedia/velocity/${OLD_VELOCITY}/`);
+if (pinned === source) throw new Error('Could not pin the old CLI to a Velocity release');
+writeFileSync(oldCli, pinned);
+
 const results = [];
 for (const { name, flags } of shapes) {
   const dir = join(workDir, name);
   console.log(`\n▶ ${name}`);
   const steps = [
-    ['create with 1.x', () => run('npx', ['--yes', OLD_CLI, name, '--yes', ...flags], workDir, { npm_config_user_agent: 'pnpm/10' })],
+    ['create with 1.x', () => run(process.execPath, [oldCli, name, '--yes', ...flags], workDir, { npm_config_user_agent: 'pnpm/10' })],
     ['commit', () => run('git', ['-c', 'user.name=ci', '-c', 'user.email=ci@example.com', 'add', '-A'], dir)],
     ['upgrade', () => run(process.execPath, [cli, 'upgrade', '--yes', '--template', template], dir)],
     ['install', () => run('pnpm', ['install', '--no-frozen-lockfile', '--prefer-offline'], dir)],
