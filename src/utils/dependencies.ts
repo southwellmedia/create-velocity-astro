@@ -62,3 +62,24 @@ export function applyDependencyChanges(
 
   return pkg;
 }
+
+/**
+ * Applies the manifest's package.json changes (mutates and returns it).
+ * Scripts a project customized are kept.
+ */
+export function applyPackageJsonChanges(
+  pkg: PackageJson,
+  changes: UpgradeManifest['packageJson'] = {}
+): PackageJson {
+  if (changes.engines) {
+    pkg.engines = { ...(pkg.engines as Record<string, string> | undefined), ...changes.engines };
+  }
+
+  const scripts = { ...(pkg.scripts as Record<string, string> | undefined) };
+  for (const [name, { value, replaces }] of Object.entries(changes.scripts ?? {})) {
+    if (scripts[name] === undefined || scripts[name] === replaces) scripts[name] = value;
+  }
+  if (Object.keys(scripts).length > 0) pkg.scripts = scripts;
+
+  return pkg;
+}

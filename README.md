@@ -52,7 +52,7 @@ The upgrade command will:
 
 1. **Replace framework files** — UI components, layouts, utilities, and config files are updated to the latest version. The fresh download is first put through the same variant pipeline your project was created with (demo / i18n / component selection from `.velocity.json`), so a minimal or i18n project is compared against minimal or i18n files
 2. **Update dependencies** — `package.json` is merged with new dependency versions: packages are bumped in whichever section they already live in (`dependencies` or `devDependencies`), new runtime and dev dependencies are added, and your custom fields are preserved
-3. **Protect your files** — Pages, content, site config, and customized components are never touched
+3. **Protect your files** — Pages, content and site config are never overwritten, though a release can add new files alongside them. Breaking releases can replace or remove specific files once, and your versions are saved to `.velocity-backup/` first; `--dry-run` lists them
 4. **Show manual migration steps** — Breaking changes are listed with affected files so you know exactly what to update
 
 > Requires a project created with `create-velocity-astro` v1.6.0+ (which writes a `.velocity.json` tracking file).

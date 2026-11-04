@@ -6,8 +6,8 @@ import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import type { UpgradeOptions, UpgradeManifest, MigrationStep } from './types.js';
 import { readVelocityConfig, writeVelocityConfig } from './utils/velocity-config.js';
-import { diffProjects, summarizeDiffs, computeFileHashes } from './utils/diff.js';
-import { applyDependencyChanges, hasDependencyChanges } from './utils/dependencies.js';
+import { diffProjects, diffStructural, summarizeDiffs, computeFileHashes } from './utils/diff.js';
+import { applyDependencyChanges, applyPackageJsonChanges, hasDependencyChanges } from './utils/dependencies.js';
 import type { PackageJson } from './utils/dependencies.js';
 import {
   showUpgradeIntro,
@@ -97,6 +97,15 @@ function filterMigrations(migrations: MigrationStep[], currentVersion: string): 
 /**
  * Scans user files for migration patterns and returns matches.
  */
+function compilePattern(pattern: string): RegExp {
+  try {
+    return new RegExp(pattern);
+  } catch {
+    // A bad pattern in a manifest must not stop an upgrade: match it literally
+    return new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  }
+}
+
 function scanForMigrationPatterns(
   targetDir: string,
   migrations: MigrationStep[]
@@ -109,7 +118,7 @@ function scanForMigrationPatterns(
       continue;
     }
 
-    const regex = new RegExp(migration.pattern);
+    const regex = compilePattern(migration.pattern);
     const matches: string[] = [];
 
     // Determine search paths
@@ -178,6 +187,7 @@ function mergePackageJsonDeps(
 
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as PackageJson;
   applyDependencyChanges(pkg, manifest.dependencies);
+  applyPackageJsonChanges(pkg, manifest.packageJson);
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 }
 
@@ -302,7 +312,11 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   }
 
   // Filter migrations to only those relevant to the user's current version
-  manifest.migrations = filterMigrations(manifest.migrations, config.version);
+  manifest.migrations = filterMigrations(manifest.migrations, config.version).filter((migration) =>
+    Object.entries(migration.when ?? {}).every(
+      ([option, value]) => Boolean(config.features?.[option as keyof typeof config.features]) === value
+    )
+  );
 
   // Check if already on latest version
   if (config.version === manifest.version) {
@@ -314,11 +328,12 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   }
 
   // 4. Diff safe files, passing stored hashes for user-modification detection
-  const diffs = diffProjects(targetDir, tempDir, manifest, config.fileHashes);
+  const safeDiffs = diffProjects(targetDir, tempDir, manifest, config.fileHashes);
+  const diffs = [...safeDiffs, ...diffStructural(targetDir, tempDir, manifest, safeDiffs)];
   const { added, modified, conflict } = summarizeDiffs(diffs);
 
   // If no changes at all
-  if (added === 0 && modified === 0 && conflict === 0 &&
+  if (added === 0 && modified === 0 && conflict === 0 && !diffs.some((d) => d.status === 'removed') &&
       !hasDependencyChanges(manifest.dependencies)) {
     showUpgradeIntro(config.version, manifest.version);
     p.log.info(pc.green('All files are up to date. Updating version marker only.'));
@@ -361,9 +376,11 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
 
   // 6a. Back up conflicting files before overwriting
   const conflictDiffs = diffs.filter((d) => d.status === 'conflict');
+  const removedDiffs = diffs.filter((d) => d.status === 'removed');
   let backupDir = '';
-  if (conflictDiffs.length > 0) {
-    backupDir = backupConflicts(targetDir, conflictDiffs, config.version);
+  const backupDiffs = [...conflictDiffs, ...removedDiffs];
+  if (backupDiffs.length > 0) {
+    backupDir = backupConflicts(targetDir, backupDiffs, config.version);
   }
 
   // 6b. Copy modified, added, and conflicting safe files (conflicts get template version)
@@ -382,8 +399,12 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     copyFileSync(src, dest);
   }
 
+  for (const diff of removedDiffs) {
+    rmSync(join(targetDir, diff.path), { force: true });
+  }
+
   // 6c. Merge package.json dependencies
-  const hasDepChanges = hasDependencyChanges(manifest.dependencies);
+  const hasDepChanges = hasDependencyChanges(manifest.dependencies) || Boolean(manifest.packageJson);
 
   if (hasDepChanges) {
     mergePackageJsonDeps(targetDir, manifest);
@@ -416,8 +437,8 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   p.log.success(pc.green('Updated .velocity.json'));
 
   // 7. Show conflict notice (before protected notice, as it's more urgent)
-  if (conflictDiffs.length > 0) {
-    showConflictNotice(backupDir, conflictDiffs);
+  if (backupDiffs.length > 0) {
+    showConflictNotice(backupDir, backupDiffs);
   }
 
   // 8. Show protected file notice
@@ -455,6 +476,7 @@ function normalizeManifest(manifest: UpgradeManifest): UpgradeManifest {
     files: {
       safe: manifest.files?.safe ?? [],
       protected: manifest.files?.protected ?? [],
+      seed: manifest.files?.seed ?? [],
     },
     dependencies: {
       update: manifest.dependencies?.update ?? {},

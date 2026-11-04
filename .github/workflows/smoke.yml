@@ -54,3 +54,6 @@ jobs:
 
       - name: Scaffold, install and build every combination
         run: node scripts/smoke.mjs --template velocity
+
+      - name: Upgrade real 1.x projects
+        run: node scripts/upgrade-smoke.mjs --template velocity

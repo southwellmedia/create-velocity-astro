@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyDependencyChanges, hasDependencyChanges } from '../../../src/utils/dependencies.js';
+import { applyPackageJsonChanges, applyDependencyChanges, hasDependencyChanges } from '../../../src/utils/dependencies.js';
 
 describe('applyDependencyChanges', () => {
   it('updates a package in whichever section it lives in', () => {
@@ -61,5 +61,31 @@ describe('hasDependencyChanges', () => {
     expect(hasDependencyChanges({ update: {}, remove: [], add: {} })).toBe(false);
     expect(hasDependencyChanges({ update: {}, remove: [], add: {}, addDev: { a: '1' } })).toBe(true);
     expect(hasDependencyChanges({})).toBe(false);
+  });
+});
+
+describe('applyPackageJsonChanges', () => {
+  const changes = {
+    engines: { node: '>=22.23.4' },
+    scripts: {
+      test: { value: 'vitest run', replaces: 'vitest' },
+      'dev:bg': { value: 'astro dev --background' },
+    },
+  };
+
+  it('adds missing scripts, updates defaults and sets engines', () => {
+    expect(applyPackageJsonChanges({ scripts: { test: 'vitest' }, engines: { node: '>=22.12.0' } }, changes)).toMatchObject({
+      scripts: { test: 'vitest run', 'dev:bg': 'astro dev --background' },
+      engines: { node: '>=22.23.4' },
+    });
+  });
+
+  it('keeps customized scripts', () => {
+    const pkg = applyPackageJsonChanges({ scripts: { test: 'jest' } }, changes);
+    expect((pkg.scripts as Record<string, string>).test).toBe('jest');
+  });
+
+  it('does nothing without changes', () => {
+    expect(applyPackageJsonChanges({ name: 'x' })).toEqual({ name: 'x' });
   });
 });

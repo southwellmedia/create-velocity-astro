@@ -66,6 +66,8 @@ export interface UpgradeManifest {
   files: {
     safe: string[];
     protected: string[];
+    /** Protected paths that are still added when the project does not have them */
+    seed?: string[];
   };
   dependencies: {
     update: Record<string, string>;
@@ -73,6 +75,12 @@ export interface UpgradeManifest {
     add: Record<string, string>;
     /** Packages to add (or bump) in devDependencies */
     addDev?: Record<string, string>;
+  };
+  /** Changes to the project's package.json besides dependencies */
+  packageJson?: {
+    engines?: Record<string, string>;
+    /** Added when missing, or updated when the script still equals `replaces` */
+    scripts?: Record<string, { value: string; replaces?: string }>;
   };
   migrations: MigrationStep[];
   scaffold?: ScaffoldSection;
@@ -83,6 +91,12 @@ export interface MigrationStep {
   description: string;
   pattern?: string;
   searchPaths?: string[];
+  /** Paths backed up and replaced once, when upgrading across this migration */
+  replace?: string[];
+  /** Paths backed up and deleted once, when upgrading across this migration */
+  remove?: string[];
+  /** Only applies to projects created with these options */
+  when?: Record<string, boolean>;
   fromVersion?: string;  // Only show if user's version >= this
   toVersion?: string;    // Only show if user's version < this
 }
