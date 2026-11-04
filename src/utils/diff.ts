@@ -24,7 +24,7 @@ export function computeFileHashes(
   for (const filePath of expanded) {
     const fullPath = join(baseDir, filePath);
     if (existsSync(fullPath) && !statSync(fullPath).isDirectory()) {
-      hashes[filePath] = hashFile(fullPath);
+      hashes[normalizePath(filePath)] = hashFile(fullPath);
     }
   }
 
@@ -140,6 +140,10 @@ export function diffProjects(
 ): FileDiff[] {
   const diffs: FileDiff[] = [];
   const safeFiles = expandPaths(manifest.files.safe, freshDir);
+  // Projects created on Windows by CLI 2.0.3 and earlier stored backslash keys
+  const hashes = new Map(
+    Object.entries(storedHashes ?? {}).map(([path, hash]) => [normalizePath(path), hash])
+  );
 
   for (const filePath of safeFiles) {
     const currentPath = join(currentDir, filePath);
@@ -159,7 +163,7 @@ export function diffProjects(
         diffs.push({ path: filePath, status: 'unchanged', category: 'safe' });
       } else {
         // Template changed this file. Check if the user also modified it.
-        const storedHash = storedHashes?.[normalizedPath];
+        const storedHash = hashes.get(normalizedPath);
 
         if (storedHash) {
           const currentHash = createHash('sha256').update(currentContent).digest('hex');
