@@ -220,7 +220,7 @@ describe('addToTranslations', () => {
   });
 
   it('escapes quotes in titles', () => {
-    expect(addToTranslations(EN, toPageSpec("Founder's Notes")!)).toContain("title: 'Founder S Notes',");
+    expect(addToTranslations(EN, toPageSpec("Founder's Notes")!)).toContain("title: 'Founder\'s Notes',");
   });
 
   it('returns null when no top-level object is found', () => {
