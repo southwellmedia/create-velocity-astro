@@ -202,8 +202,23 @@ export function addToNavConfig(navConfig: string, spec: PageSpec): string {
 const TRANSLATIONS_OPEN = /^(?:export[ \t]+)?const[ \t]+[A-Za-z_$][\w$]*[ \t]*(?::[^=\n]+)?=[ \t]*\{[ \t]*$/m;
 
 /**
- * Adds the page's title/description keys right after the line that opens the
- * top-level object. Returns null if no such line is found.
+ * Adds `nav.<id>`, which Velocity uses to title the page's social image. A `nav`
+ * block on one line is left alone rather than risk a duplicate key.
+ */
+function addNavLabel(source: string, spec: PageSpec, insertAt: number): string {
+  const label = `    ${spec.id}: ${quote(spec.title)},\n`;
+  const open = /^  nav:[ \t]*\{[ \t]*$/m.exec(source);
+  if (open) {
+    const after = open.index + open[0].length + 1;
+    return source.slice(0, after) + label + source.slice(after);
+  }
+  if (/^  nav:/m.test(source)) return source;
+  return source.slice(0, insertAt) + `  nav: {\n${label}  },\n` + source.slice(insertAt);
+}
+
+/**
+ * Adds the page's nav label and title/description keys right after the line that
+ * opens the top-level object. Returns null if no such line is found.
  */
 export function addToTranslations(source: string, spec: PageSpec): string | null {
   const match = TRANSLATIONS_OPEN.exec(source);
@@ -214,7 +229,7 @@ export function addToTranslations(source: string, spec: PageSpec): string | null
     `    title: ${quote(spec.title)},\n` +
     `    description: ${quote(`Describe the ${spec.title} page here.`)},\n` +
     `  },\n`;
-  return source.slice(0, insertAt) + entry + source.slice(insertAt);
+  return addNavLabel(source.slice(0, insertAt) + entry + source.slice(insertAt), spec, insertAt);
 }
 
 function writeFile(targetDir: string, rel: string, content: string): void {
