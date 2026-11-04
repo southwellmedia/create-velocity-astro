@@ -4,24 +4,22 @@
 
 <h1 align="center">create-velocity-astro</h1>
 
-<p align="center">Scaffold and upgrade production-ready <a href="https://github.com/southwellmedia/velocity">Velocity</a> projects in seconds.</p>
+<p align="center">Create and upgrade <a href="https://github.com/southwellmedia/velocity">Velocity</a> projects: a production-ready Astro 7 and Tailwind CSS v4 starter kit.</p>
 
-Velocity is an opinionated Astro 7 + Tailwind CSS v4 starter kit with 40+ components, i18n support, SEO optimization, and deployment-ready configuration.
-
-## Requirements
-
-- **Generated projects** need **Node.js >= 22.23.4** (Astro 7). Node 24 LTS is recommended; Velocity's `.nvmrc` pins 24.
-- **The CLI itself** runs on Node.js >= 20.19.0. If your Node is older than the template requires, `create` warns and `upgrade` stops.
-- `create-velocity-astro` 2.x works with **Velocity 2.0 and later**. For older Velocity versions use `create-velocity-astro@1`.
+<p align="center">
+  <a href="https://docs.deployvelocity.com">Documentation</a> ·
+  <a href="https://www.deployvelocity.com">Website</a> ·
+  <a href="https://demo.deployvelocity.com">Demo</a>
+</p>
 
 ## Quick Start
 
 ```bash
+# pnpm (recommended)
+pnpm create velocity-astro@latest my-site
+
 # npm
 npm create velocity-astro@latest my-site
-
-# pnpm (recommended)
-pnpm create velocity-astro my-site
 
 # yarn
 yarn create velocity-astro my-site
@@ -30,451 +28,146 @@ yarn create velocity-astro my-site
 bun create velocity-astro my-site
 ```
 
-## Upgrade an Existing Project
-
-Already have a Velocity project? Upgrade to the latest version:
+The wizard asks what to include. With npm, put `--` before any flags so they reach the CLI:
 
 ```bash
-# Preview what will change (no files modified)
-pnpm create velocity-astro upgrade --dry-run
-
-# Run the upgrade
-pnpm create velocity-astro upgrade
-
-# Skip confirmation prompts
-pnpm create velocity-astro upgrade --yes
-
-# Upgrade to a specific Velocity release (default: latest release)
-pnpm create velocity-astro upgrade --ref v2.1.0
-```
-
-The upgrade command will:
-
-1. **Replace framework files** — UI components, layouts, utilities, and config files are updated to the latest version. The fresh download is first put through the same variant pipeline your project was created with (demo / i18n / component selection from `.velocity.json`), so a minimal or i18n project is compared against minimal or i18n files
-2. **Update dependencies** — `package.json` is merged with new dependency versions: packages are bumped in whichever section they already live in (`dependencies` or `devDependencies`), new runtime and dev dependencies are added, and your custom fields are preserved
-3. **Protect your files** — Pages, content and site config are never overwritten, though a release can add new files alongside them. Breaking releases can replace or remove specific files once, and your versions are saved to `.velocity-backup/` first; `--dry-run` lists them
-4. **Show manual migration steps** — Breaking changes are listed with affected files so you know exactly what to update
-
-> Requires a project created with `create-velocity-astro` v1.6.0+ (which writes a `.velocity.json` tracking file).
-
-## CLI Options
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `upgrade` | command | - | Upgrade an existing Velocity project |
-| `--demo` | boolean | prompt | Include demo landing page and sample content |
-| `--components` | string | prompt | Component selection (see below) |
-| `--i18n` | boolean | prompt | Add internationalization support |
-| `--pages [names]` | string | - | Generate starter pages: `--pages` prompts for names, `--pages "Pricing, Team"` uses them |
-| `--ref <tag\|branch>` | string | latest release | Velocity tag or branch to scaffold / upgrade from |
-| `--template <dir>` | string | - | Use a local Velocity checkout instead of GitHub |
-| `--no-install` | boolean | false | Skip installing dependencies |
-| `--dry-run` | boolean | false | Preview upgrade changes without applying |
-| `-y, --yes` | boolean | false | Skip prompts, use defaults |
-| `-h, --help` | - | - | Show help message |
-| `-v, --version` | - | - | Show version number |
-
-### Component Selection
-
-The `--components` flag controls which UI components are included:
-
-```bash
-# Include all components (default with -y)
---components
---components=all
-
-# Exclude optional components (components core pages need are kept)
---components=none
-
-# Include specific categories
---components=ui
---components=ui,patterns
---components=ui,patterns,hero
-```
-
-Only directories Velocity marks as optional (`src/components/ui`, `src/components/patterns`, `src/components/hero`) are ever pruned. Components that core pages import (for example the newsletter form and search input) are always kept, together with their dependencies. With `--demo`, every component is kept, because the demo pages (such as the components showcase) use them all.
-
-**Component Categories:**
-
-| Category | Components | Count |
-|----------|------------|-------|
-| `ui` | Button, Input, Textarea, Select, Checkbox, Radio, Switch, Card, Badge, Avatar, AvatarGroup, Table, Pagination, Progress, Skeleton, Alert, Toast, Tooltip, Dialog, Dropdown, Tabs, VerticalTabs, Accordion, Separator, Icon, CodeBlock, Logo, CTA, NpmCopyButton, SocialProof, TerminalDemo | 31 |
-| `patterns` | ContactForm, NewsletterForm, FormField, SearchInput, PasswordInput, StatCard, EmptyState | 7 |
-| `hero` | Hero (flexible hero section) | 1 |
-
-## Component Features
-
-### Header
-
-Flexible navigation header with variant-based configuration:
-
-```astro
-<Header
-  layout="default"        <!-- default | centered | minimal -->
-  position="sticky"       <!-- fixed | sticky | static -->
-  size="md"               <!-- sm | md | lg -->
-  variant="default"       <!-- default | solid | transparent -->
-  colorScheme="default"   <!-- default | invert -->
-  showCta={true}
-  showThemeToggle={true}
-  showLanguageSwitcher={true}  <!-- i18n only -->
-/>
-```
-
-### Footer
-
-Four layout variants for different site needs:
-
-```astro
-<Footer
-  layout="simple"         <!-- simple | columns | minimal | stacked -->
-  background="default"    <!-- default | secondary | invert -->
-  columns={3}             <!-- 2 | 3 | 4 (columns layout only) -->
-  showSocial={true}
-  showCopyright={true}
-  socialLinks={[{ platform: 'github', href: '...' }]}
-  legalLinks={[{ label: 'Privacy', href: '/privacy' }]}
-/>
-```
-
-### Hero
-
-Flexible hero section. Content goes in named slots:
-
-```astro
-<Hero
-  layout="centered"       <!-- centered | split -->
-  size="lg"               <!-- sm | md | lg | xl -->
-  showGrid
-  showBlob
-  blobPosition="center"   <!-- left | right | center -->
->
-  <Badge slot="badge">New</Badge>
-  <h1 slot="title">Your Title</h1>
-  <p slot="description">Say what you do.</p>
-  <Fragment slot="actions"><Button href="/contact">Get started</Button></Fragment>
-  <Image slot="aside" src={image} alt="" />  <!-- split layout -->
-</Hero>
-```
-
-### CTA
-
-Reusable call-to-action section, also built from slots:
-
-```astro
-<CTA
-  variant="default"       <!-- default | invert -->
-  size="lg"               <!-- sm | md | lg | xl -->
-  maxWidth="lg"           <!-- sm | md | lg | xl -->
->
-  <Logo slot="logo" />
-  <h2 slot="heading">Ready to start?</h2>
-  <p slot="description">Get started in seconds.</p>
-  <Fragment slot="actions"><Button href="/contact">Contact us</Button></Fragment>
-</CTA>
-```
-
-### Button
-
-Production-ready button with variants:
-
-```astro
-<Button
-  variant="primary"       <!-- primary | secondary | outline | ghost | link | destructive -->
-  size="md"               <!-- sm | md | lg -->
-  fullWidth={false}
-  loading={false}
-  icon={false}            <!-- square, icon-only button -->
-  href="/path"            <!-- renders as <a> when provided -->
->
-  Label
-</Button>
-```
-
-## Examples
-
-### Minimal Project (fastest)
-
-```bash
-npm create velocity-astro@latest my-site -- -y --demo=false --components=none
-```
-
-Creates a clean starter with just layouts, SEO components, and basic pages.
-
-### Full-Featured Project
-
-```bash
-npm create velocity-astro@latest my-site -- --demo --components --i18n
-```
-
-Includes everything: demo landing page, all components, and i18n support.
-
-### Production Site Setup
-
-```bash
-npm create velocity-astro@latest client-site -- --demo --components=ui,patterns
-```
-
-Demo content to customize, plus UI and form components for building pages.
-
-### i18n Multi-Language Site
-
-```bash
-npm create velocity-astro@latest global-site -- --i18n --demo
-```
-
-Enables additional locales and site-copy translations. Locale routing, UI strings, hreflang tags and the language switcher are part of Velocity core; the `i18n` variant switches them on.
-
-### Custom Pages Generation
-
-```bash
-npm create velocity-astro@latest my-site -- --pages
-npm create velocity-astro@latest my-site -- -y --pages "Pricing Plans, Team"
-```
-
-For each page (e.g. "Pricing Plans") the CLI creates:
-
-- `src/views/PricingPlansView.astro`: the page content, using `PageLayout` (or `LandingLayout`) and `useTranslations`
-- `src/pages/pricing-plans.astro`: the default-locale page
-- `src/pages/[lang]/[...pricingPlans].astro`: the page for other locales (generates nothing while only one locale is enabled, so adding locales later just works)
-- a `pricingPlans` route and nav item in `src/config/nav.config.ts`
-- `pricingPlansPage.title` / `.description` strings in every `src/i18n/translations/*.ts` (English text; translate as needed)
-
-Pages whose route, view or page file already exists are skipped with a warning.
-
-## How It Works
-
-### Architecture
-
-```
-User runs CLI
-    │
-    ▼
-Resolves the Velocity version (--ref, --template, or the latest GitHub release)
-    │
-    ▼
-Downloads that Velocity version (via giget) into a staging directory
-    │
-    ▼
-Checks velocity-manifest.json → scaffold (CLI version, Node version)
-    │
-    ▼
-Applies Velocity's variants, component selection and cleanup
-    │
-    ▼
-Copies the result into your project, configures it and installs dependencies
-```
-
-**The CLI ships no template files.** Everything a generated project can contain lives in the [Velocity repository](https://github.com/southwellmedia/velocity), and Velocity's CI builds every option combination. The CLI is a small, generic engine that follows the `scaffold` section of Velocity's `velocity-manifest.json`.
-
-### Variants
-
-Velocity declares its variants in `velocity-manifest.json`:
-
-```jsonc
-"scaffold": {
-  "schemaVersion": 1,
-  "minCliVersion": "2.0.0",
-  "node": ">=22.23.4",
-  "variants": [
-    { "id": "i18n",    "when": { "i18n": true },  "overlay": "variants/i18n",    "remove": [] },
-    { "id": "demo",    "when": { "demo": true },  "alwaysInclude": ["*"] },
-    { "id": "minimal", "when": { "demo": false }, "overlay": "variants/minimal", "remove": ["src/components/landing"] }
-  ],
-  "components": {
-    "optionalDirs": ["src/components/ui", "src/components/patterns", "src/components/hero"],
-    "alwaysInclude": ["search-input", "newsletter-form"]
-  },
-  "cleanup": ["variants"],
-  "cleanupScripts": ["test:scaffold"]
-}
-```
-
-The CLI then:
-
-1. Applies each variant **in order**, but only if every key in `when` equals your choice for that option (`demo`, `i18n`). The variant's `overlay` directory (if any) is copied over the project (overwriting files), then each path in `remove` is deleted, and its `alwaysInclude` ids are added to `components.alwaysInclude`.
-2. Prunes components, but only inside `components.optionalDirs`. Components in `alwaysInclude`, and everything they depend on in `component-registry.json`, are always kept. The id `"*"` keeps every component.
-3. Deletes every path in `cleanup`, then removes the npm scripts named in `cleanupScripts` from `package.json`.
-4. Keeps `pnpm-lock.yaml` (the lockfile Velocity's CI tested) when you choose pnpm, and removes lockfiles that don't match your package manager.
-
-`upgrade` runs steps 1–3 on the fresh download, using the options recorded in `.velocity.json`, before comparing files.
-
-### Choosing a Velocity version
-
-By default the CLI uses the **latest GitHub release** of Velocity. If GitHub can't be reached, it falls back to `main` and tells you. Override this with:
-
-```bash
-# A tag or branch
-npm create velocity-astro@latest my-site -- --ref v2.0.0
-
-# A local checkout (node_modules, dist, .git, .astro, .vercel, .netlify,
-# test-results and playwright-report are skipped)
-npm create velocity-astro@latest my-site -- --template ../velocity
-```
-
-The resolved ref (or local path) and Velocity version are recorded in `.velocity.json`. `upgrade` accepts the same `--ref` and `--template` flags.
-
-If the chosen Velocity version requires a newer CLI, the CLI stops and asks you to run `npm create velocity-astro@latest`. If it predates Velocity 2.0 (no `scaffold` section), the CLI stops and suggests picking a 2.x release with `--ref`.
-
-### Component Registry
-
-Components are managed via `component-registry.json` in Velocity. The registry defines:
-
-- Component files and locations
-- Dependencies between components
-- Required utilities (like `cn` for class merging)
-- Category groupings
-
-When you select categories, the CLI resolves all dependencies automatically, using the registry from the Velocity version being scaffolded.
-
-## Contributing: smoke test
-
-`scripts/smoke.mjs` scaffolds every combination of {demo, no demo} × {i18n, no i18n} × {all components, `--components=none`} from a Velocity checkout, installs with pnpm and runs `astro build`:
-
-```bash
-npm run build
-node scripts/smoke.mjs --template ../velocity
-```
-
-The `Velocity scaffold smoke test` GitHub Actions workflow runs the same script against Velocity `main`, or any ref you pass when running it manually.
-
-## What's Included
-
-Every Velocity project includes:
-
-| Feature | Description |
-|---------|-------------|
-| **Astro 7** | Latest Astro with native view transitions |
-| **Tailwind CSS v4** | Modern utility-first CSS with native cascade layers |
-| **TypeScript** | Full type safety throughout |
-| **React** | For interactive islands and components |
-| **MDX** | Write content with JSX components |
-| **SEO** | Meta tags, Open Graph, JSON-LD schemas |
-| **Sitemap** | Auto-generated sitemap.xml |
-| **RSS Feed** | Built-in RSS support |
-| **Dark Mode** | System-aware theme switching |
-| **ESLint + Prettier** | Code quality and formatting |
-| **Analytics Ready** | GA4 and GTM support via env vars |
-
-### Optional Features
-
-| Feature | Flag | Description |
-|---------|------|-------------|
-| Demo content | `--demo` | Landing page, sample blog posts, about/contact pages |
-| UI Components | `--components` | 40+ production-ready components |
-| i18n Support | `--i18n` | Multi-language routing and translations |
-| Starter Pages | `--pages` | Generate starter pages (views, routes, nav and translations) |
-
-## Configuration
-
-### Environment Variables
-
-Create a `.env` file to configure analytics and verification:
-
-```env
-# Analytics (optional)
-PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX
-PUBLIC_GTM_ID=GTM-XXXXXXX
-
-# Site Verification (optional)
-GOOGLE_SITE_VERIFICATION=your-verification-code
-BING_SITE_VERIFICATION=your-verification-code
-
-# Site URL (required for production)
-SITE_URL=https://your-domain.com
-```
-
-### Site Configuration
-
-Edit `src/config/site.config.ts` to customize:
-
-```typescript
-const siteConfig: SiteConfig = {
-  name: 'Your Site Name',
-  description: 'Your site description',
-  url: 'https://your-domain.com',
-  author: 'Your Name',
-  email: 'hello@example.com',
-
-  // Branding
-  branding: {
-    logo: { alt: 'Your Logo' },
-    favicon: { svg: '/favicon.svg' },
-    colors: {
-      themeColor: '#F94C10',
-      backgroundColor: '#ffffff',
-    },
-  },
-};
-```
-
-### Branding Files
-
-Replace these files with your own branding:
-
-- `public/favicon.svg` - Site favicon
-- `src/assets/branding/` - Logo SVG files
-
-## Development
-
-After scaffolding, run:
-
-```bash
-cd my-site
-npm run dev     # Start dev server at localhost:4321
-npm run build   # Build for production
-npm run preview # Preview production build
-```
-
-## Deployment
-
-Velocity includes ready-to-use configurations for:
-
-- **Vercel** - Zero-config deployment
-- **Netlify** - Includes `netlify.toml`
-- **Cloudflare Pages** - SSR-ready
-
-## Troubleshooting
-
-### Network Errors
-
-If template download fails:
-- Check your internet connection
-- Verify GitHub is accessible
-- Try again in a few minutes
-
-### Directory Already Exists
-
-The CLI will prompt to overwrite existing directories. Use a new directory name or clear the existing one.
-
-### Permission Errors
-
-On Unix systems, you may need to set execute permissions:
-
-```bash
-chmod +x node_modules/.bin/create-velocity-astro
-```
-
-### Dependency Installation Fails
-
-If automatic installation fails:
-
-```bash
-cd my-site
-npm install  # or pnpm install / yarn
+npm create velocity-astro@latest my-site -- --demo --i18n
 ```
 
 ## Requirements
 
-- **Node.js** 18.0.0 or higher
-- **Package Manager**: npm, pnpm, yarn, or bun
-- **Git** (optional, for repository initialization)
+- **Generated projects:** Node.js 22.23.4 or later. Node 24 LTS is recommended.
+- **The CLI:** Node.js 20.19.0 or later.
+- **Package manager:** npm, pnpm, yarn or bun. Git is optional.
 
-## Related
+CLI 2.x works with Velocity 2.0 and later. The 1.x CLI is deprecated and no longer creates working projects, so upgrade any older project with the command below.
 
-- [Velocity](https://github.com/southwellmedia/velocity) - The Astro starter kit
-- [Astro](https://astro.build) - The web framework
-- [Tailwind CSS](https://tailwindcss.com) - The CSS framework
+## What You Get
+
+| Feature | Description |
+|---------|-------------|
+| **Astro 7 and Tailwind CSS v4** | With TypeScript, React islands and MDX |
+| **58 components** | Accessible, typed and dark-mode ready |
+| **Working forms** | Contact and newsletter forms on Astro Actions |
+| **Deployment** | Adapter detected for Vercel and Netlify, Node everywhere else, Cloudflare opt-in |
+| **Strict CSP** | Hash-based Content Security Policy on by default |
+| **Site search** | Pagefind, with no external service |
+| **SEO** | Meta tags, Open Graph images, JSON-LD, sitemap and RSS |
+| **Languages** | Add one by listing it in `src/i18n/locales.mjs` |
+| **Tests** | Vitest, plus Playwright with axe accessibility checks |
+| **Analytics and consent** | GA4 and GTM through environment variables, with a consent banner |
+
+## Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--demo` | prompt | Include the demo landing, About and Contact pages, component showcase and sample content |
+| `--components` | prompt | Which components to include (see below) |
+| `--i18n` | prompt | Enable Spanish and French alongside English |
+| `--pages [names]` | - | Generate starter pages: `--pages "Pricing, Team"`, or `--pages` to be asked |
+| `--ref <tag\|branch>` | latest release | Velocity version to use |
+| `--template <dir>` | - | Use a local Velocity checkout |
+| `--no-install` | - | Skip installing dependencies |
+| `-y, --yes` | - | Skip prompts: a minimal project with all components, using the package manager you ran the CLI with |
+| `-h, --help` | - | Show help |
+| `-v, --version` | - | Show the version |
+
+### Components
+
+```bash
+--components                # all components
+--components=none           # only what core pages need
+--components=ui,patterns    # specific categories: ui, patterns, hero
+```
+
+Demo projects always keep every component, because the demo pages use them. Components that core pages need are always kept, along with everything they depend on.
+
+### Examples
+
+```bash
+# Minimal starter
+pnpm create velocity-astro@latest my-site -y --components=none
+
+# Everything
+pnpm create velocity-astro@latest my-site --demo --components --i18n
+
+# With starter pages
+pnpm create velocity-astro@latest my-site -y --pages "Pricing Plans, Team"
+
+# A specific Velocity version
+pnpm create velocity-astro@latest my-site --ref v2.0.0
+```
+
+Each page from `--pages` gets a view, a route in every language, a nav item and translation strings.
+
+## Upgrade an Existing Project
+
+Commit your work, then run this from your project:
+
+```bash
+# Preview the changes
+pnpm create velocity-astro@latest upgrade --dry-run
+
+# Upgrade
+pnpm create velocity-astro@latest upgrade
+pnpm install
+```
+
+`upgrade` also accepts `--yes`, `--ref` and `--template`. It:
+
+1. **Updates Velocity's files**, such as components, layouts and utilities. If you edited one, your version is saved to `.velocity-backup/` first.
+2. **Updates dependencies** and `package.json` scripts, keeping scripts you customized.
+3. **Leaves your files alone**, including your pages, content and site config. A release can add new files alongside them.
+4. **Lists manual steps**, with the files each one affects.
+
+Breaking releases can replace or remove specific files once, because the old version can't work with the new one. `--dry-run` lists them, and your versions are saved to `.velocity-backup/`.
+
+Upgrading from 1.x? Follow the [v1 to v2 guide](https://docs.deployvelocity.com/upgrade-guides/v1-to-v2/). Projects need a `.velocity.json` file, which CLI 1.6.0 and later create.
+
+## How It Works
+
+The CLI ships no template files. It downloads a Velocity release from GitHub and applies the `scaffold` section of that release's `velocity-manifest.json`, so a project always matches the version it came from. Velocity's CI builds every project shape the CLI can create.
+
+The format is documented in [`variants/README.md`](https://github.com/southwellmedia/velocity/blob/main/variants/README.md).
+
+If GitHub's release API can't be reached, the CLI falls back to Velocity's `main` branch and tells you.
+
+## After Creating a Project
+
+```bash
+cd my-site
+pnpm dev        # Start the dev server at localhost:4321
+pnpm build      # Build for production
+pnpm validate   # Lint, type check, test and build
+```
+
+Then set your details in `src/config/site.config.ts`, add `SITE_URL` to `.env` (see `.env.example`), and replace the logos in `src/assets/branding/`. The [documentation](https://docs.deployvelocity.com) covers the rest.
+
+## Troubleshooting
+
+- **Download fails:** check your connection and that GitHub is reachable, then try again.
+- **Directory already exists:** the wizard asks before overwriting. `--yes` stops instead, so use a new name.
+- **Flags are ignored with npm:** add `--` before them.
+- **Installation fails:** the project is still created. Run your package manager's install command in it.
+- **"requires a newer CLI":** use `@latest`, as in the commands above.
+
+See the [CLI troubleshooting guide](https://docs.deployvelocity.com/cli/troubleshooting/) for more.
+
+## Contributing
+
+```bash
+npm ci
+npx vitest run
+npm run build
+
+# Scaffold, install and build every option combination
+node scripts/smoke.mjs --template ../velocity
+
+# Upgrade real projects made with the 1.x CLI
+node scripts/upgrade-smoke.mjs --template ../velocity
+```
+
+Both scripts need pnpm. CI runs them against Velocity `main`.
 
 ## License
 
