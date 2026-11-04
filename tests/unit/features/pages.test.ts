@@ -115,6 +115,23 @@ describe('toPageSpec', () => {
   });
 });
 
+describe('toPageSpec with apostrophes', () => {
+  it.each(["Founder's Notes", 'Founder’s Notes'])('keeps %s as one word', (name) => {
+    expect(toPageSpec(name)).toMatchObject({
+      slug: 'founders-notes',
+      id: 'foundersNotes',
+      view: 'FoundersNotesView',
+      ns: 'foundersNotesPage',
+    });
+    expect(toPageSpec(name)!.title).toBe(name);
+  });
+
+  it('ignores stray quotes', () => {
+    expect(toPageSpec("'Team'")).toMatchObject({ title: 'Team', slug: 'team' });
+    expect(toPageSpec("'''")).toBeNull();
+  });
+});
+
 describe('parsePageNames', () => {
   it('splits, trims, and drops empty, reserved and duplicate names', () => {
     expect(parsePageNames('Pricing Plans, team,, blog, Search, pricing-plans, 404')).toEqual([

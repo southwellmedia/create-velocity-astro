@@ -31,7 +31,7 @@ async function promptComponentMode(): Promise<ComponentSelectionMode> {
       {
         value: 'all' as ComponentSelectionMode,
         label: 'All',
-        hint: 'Include all 24 optional components',
+        hint: 'Include every optional component',
       },
       {
         value: 'categories' as ComponentSelectionMode,
@@ -325,7 +325,7 @@ export async function runPrompts(defaults: PromptDefaults = {}): Promise<PromptA
                   {
                     value: 'landing' as PageLayout,
                     label: 'LandingLayout',
-                    hint: 'Marketing pages (Navbar + LandingFooter)',
+                    hint: 'Marketing pages (Header + Footer, landing styling)',
                   },
                 ],
                 initialValue: 'page' as PageLayout,

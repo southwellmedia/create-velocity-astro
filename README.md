@@ -139,38 +139,39 @@ Four layout variants for different site needs:
 
 ### Hero
 
-Flexible hero section with multiple layout options:
+Flexible hero section. Content goes in named slots:
 
 ```astro
 <Hero
-  layout="single"         <!-- single | split -->
-  splitRatio="1:1"        <!-- 1:1 | 1:2 | 2:1 -->
-  align="left"            <!-- left | center | right -->
-  background="default"    <!-- default | secondary | invert | gradient | image -->
+  layout="centered"       <!-- centered | split -->
   size="lg"               <!-- sm | md | lg | xl -->
-  showGrid={true}
-  showBlob={true}
-  title="Your Title"
-  titleHighlight="Title"  <!-- text to highlight in brand color -->
-  description="..."
-/>
+  showGrid
+  showBlob
+  blobPosition="center"   <!-- left | right | center -->
+>
+  <Badge slot="badge">New</Badge>
+  <h1 slot="title">Your Title</h1>
+  <p slot="description">Say what you do.</p>
+  <Fragment slot="actions"><Button href="/contact">Get started</Button></Fragment>
+  <Image slot="aside" src={image} alt="" />  <!-- split layout -->
+</Hero>
 ```
 
 ### CTA
 
-Reusable call-to-action section:
+Reusable call-to-action section, also built from slots:
 
 ```astro
 <CTA
   variant="default"       <!-- default | invert -->
   size="lg"               <!-- sm | md | lg | xl -->
-  align="center"          <!-- center | left -->
-  showLogo={true}
-  heading="Ready to start?"
-  headingHighlight="start"
-  description="Get started in seconds."
-  showCopyCommand={true}
-/>
+  maxWidth="lg"           <!-- sm | md | lg | xl -->
+>
+  <Logo slot="logo" />
+  <h2 slot="heading">Ready to start?</h2>
+  <p slot="description">Get started in seconds.</p>
+  <Fragment slot="actions"><Button href="/contact">Contact us</Button></Fragment>
+</CTA>
 ```
 
 ### Button
@@ -179,13 +180,15 @@ Production-ready button with variants:
 
 ```astro
 <Button
-  variant="primary"       <!-- primary | secondary | outline | ghost | destructive -->
+  variant="primary"       <!-- primary | secondary | outline | ghost | link | destructive -->
   size="md"               <!-- sm | md | lg -->
-  colorScheme="default"   <!-- default | invert -->
   fullWidth={false}
-  icon={false}
+  loading={false}
+  icon={false}            <!-- square, icon-only button -->
   href="/path"            <!-- renders as <a> when provided -->
-/>
+>
+  Label
+</Button>
 ```
 
 ## Examples
@@ -193,7 +196,7 @@ Production-ready button with variants:
 ### Minimal Project (fastest)
 
 ```bash
-npm create velocity-astro@latest my-site -y --demo=false --components=none
+npm create velocity-astro@latest my-site -- -y --demo=false --components=none
 ```
 
 Creates a clean starter with just layouts, SEO components, and basic pages.
@@ -201,7 +204,7 @@ Creates a clean starter with just layouts, SEO components, and basic pages.
 ### Full-Featured Project
 
 ```bash
-npm create velocity-astro@latest my-site --demo --components --i18n
+npm create velocity-astro@latest my-site -- --demo --components --i18n
 ```
 
 Includes everything: demo landing page, all components, and i18n support.
@@ -209,7 +212,7 @@ Includes everything: demo landing page, all components, and i18n support.
 ### Production Site Setup
 
 ```bash
-npm create velocity-astro@latest client-site --demo --components=ui,patterns
+npm create velocity-astro@latest client-site -- --demo --components=ui,patterns
 ```
 
 Demo content to customize, plus UI and form components for building pages.
@@ -217,7 +220,7 @@ Demo content to customize, plus UI and form components for building pages.
 ### i18n Multi-Language Site
 
 ```bash
-npm create velocity-astro@latest global-site --i18n --demo
+npm create velocity-astro@latest global-site -- --i18n --demo
 ```
 
 Enables additional locales and site-copy translations. Locale routing, UI strings, hreflang tags and the language switcher are part of Velocity core; the `i18n` variant switches them on.
@@ -225,8 +228,8 @@ Enables additional locales and site-copy translations. Locale routing, UI string
 ### Custom Pages Generation
 
 ```bash
-npm create velocity-astro@latest my-site --pages
-npm create velocity-astro@latest my-site -y --pages "Pricing Plans, Team"
+npm create velocity-astro@latest my-site -- --pages
+npm create velocity-astro@latest my-site -- -y --pages "Pricing Plans, Team"
 ```
 
 For each page (e.g. "Pricing Plans") the CLI creates:
@@ -302,11 +305,11 @@ By default the CLI uses the **latest GitHub release** of Velocity. If GitHub can
 
 ```bash
 # A tag or branch
-npm create velocity-astro@latest my-site --ref v2.0.0
+npm create velocity-astro@latest my-site -- --ref v2.0.0
 
 # A local checkout (node_modules, dist, .git, .astro, .vercel, .netlify,
 # test-results and playwright-report are skipped)
-npm create velocity-astro@latest my-site --template ../velocity
+npm create velocity-astro@latest my-site -- --template ../velocity
 ```
 
 The resolved ref (or local path) and Velocity version are recorded in `.velocity.json`. `upgrade` accepts the same `--ref` and `--template` flags.

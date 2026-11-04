@@ -38,11 +38,15 @@ export class PagesUnsupportedError extends Error {
   }
 }
 
+const APOSTROPHES = /['\u2019]/g;
+
+/** Words of a page name. Apostrophes stay inside a word: "Founder's" is one word. */
 function words(name: string): string[] {
   return name
     .trim()
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean);
+    .split(/[^A-Za-z0-9'\u2019]+/)
+    .map((w) => w.replace(/^['\u2019]+|['\u2019]+$/g, ''))
+    .filter((w) => w.replace(APOSTROPHES, '').length > 0);
 }
 
 const capitalize = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
@@ -54,8 +58,9 @@ const pascalWord = (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLower
  * namespace pricingPlansPage. Returns null if the name has no usable characters.
  */
 export function toPageSpec(name: string): PageSpec | null {
-  const parts = words(name);
-  if (parts.length === 0) return null;
+  const titleWords = words(name);
+  if (titleWords.length === 0) return null;
+  const parts = titleWords.map((w) => w.replace(APOSTROPHES, ''));
 
   const pascal = parts.map(pascalWord).join('');
   let id = parts[0]!.toLowerCase() + parts.slice(1).map(pascalWord).join('');
@@ -66,7 +71,7 @@ export function toPageSpec(name: string): PageSpec | null {
   }
 
   return {
-    title: parts.map(capitalize).join(' '),
+    title: titleWords.map(capitalize).join(' '),
     slug: parts.map((w) => w.toLowerCase()).join('-'),
     id,
     view,

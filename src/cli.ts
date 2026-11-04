@@ -12,6 +12,7 @@ import { isEmptyDir } from './utils/fs.js';
 import { toValidProjectName } from './utils/validate.js';
 import { resolveTemplateSource } from './template-source.js';
 import { parsePageNames } from './features/pages.js';
+import { detectPackageManager } from './utils/package-manager.js';
 import type { TemplateSource } from './template-source.js';
 
 declare const CLI_VERSION: string;
@@ -20,7 +21,7 @@ const HELP_TEXT = `
 ${pc.bold('create-velocity-astro')} - Create and upgrade Velocity (Astro 7 + Tailwind v4) projects
 
 ${pc.bold('Usage:')}
-  npm create velocity-astro@latest [project-name] [options]
+  npm create velocity-astro@latest [project-name] -- [options]
   pnpm create velocity-astro [project-name] [options]
 
 ${pc.bold('Commands:')}
@@ -56,9 +57,9 @@ ${pc.bold('Requirements:')}
 
 ${pc.bold('Examples:')}
   npm create velocity-astro@latest my-site
-  npm create velocity-astro@latest my-site --demo --components
-  npm create velocity-astro@latest my-site --components=ui,patterns
-  npm create velocity-astro@latest my-site --ref v2.0.0
+  npm create velocity-astro@latest my-site -- --demo --components
+  npm create velocity-astro@latest my-site -- --components=ui,patterns
+  npm create velocity-astro@latest my-site -- --ref v2.0.0
   pnpm create velocity-astro my-site -y --template ../velocity
   pnpm create velocity-astro my-site -y --pages "Pricing Plans, Team"
 
@@ -192,6 +193,8 @@ export async function run(argv: string[]): Promise<void> {
       process.exit(1);
     }
 
+    const packageManager = detectPackageManager();
+
     try {
       await scaffold({
         projectName,
@@ -201,7 +204,7 @@ export async function run(argv: string[]): Promise<void> {
         i18n: args.i18n || false,
         pages: pageNames,
         pageLayout: 'page',
-        packageManager: 'pnpm',
+        packageManager,
         templateSource,
         install,
       });
@@ -210,7 +213,7 @@ export async function run(argv: string[]): Promise<void> {
       process.exit(1);
     }
 
-    showOutro(projectName, 'pnpm');
+    showOutro(projectName, packageManager);
     return;
   }
 
