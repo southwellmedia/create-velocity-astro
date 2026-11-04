@@ -208,15 +208,30 @@ describe('addToNavConfig', () => {
 
 describe('addToTranslations', () => {
   const spec = toPageSpec('Pricing Plans')!;
+  const nav = "  nav: {\n    pricingPlans: 'Pricing Plans',\n  },\n";
   const entry =
     "  pricingPlansPage: {\n    title: 'Pricing Plans',\n    description: 'Describe the Pricing Plans page here.',\n  },\n";
 
   it('inserts right after `const en = {`', () => {
-    expect(addToTranslations(EN, spec)).toContain(`const en = {\n${entry}  meta: {`);
+    expect(addToTranslations(EN, spec)).toContain(`const en = {\n${nav}${entry}  meta: {`);
   });
 
   it('inserts right after a typed `const es: SiteStrings = {`', () => {
-    expect(addToTranslations(ES, spec)).toContain(`const es: SiteStrings = {\n${entry}  meta: {`);
+    expect(addToTranslations(ES, spec)).toContain(`const es: SiteStrings = {\n${nav}${entry}  meta: {`);
+  });
+
+  it('adds to an existing nav block', () => {
+    const source = EN.replace('const en = {\n', "const en = {\n  nav: {\n    team: 'Team',\n  },\n");
+    const out = addToTranslations(source, spec)!;
+    expect(out).toContain("  nav: {\n    pricingPlans: 'Pricing Plans',\n    team: 'Team',\n  },\n");
+    expect(out.match(/^  nav:/gm)).toHaveLength(1);
+  });
+
+  it('leaves a one-line nav block alone', () => {
+    const source = EN.replace('const en = {\n', "const en = {\n  nav: { team: 'Team' },\n");
+    const out = addToTranslations(source, spec)!;
+    expect(out.match(/^  nav:/gm)).toHaveLength(1);
+    expect(out).toContain(entry);
   });
 
   it('escapes quotes in titles', () => {
