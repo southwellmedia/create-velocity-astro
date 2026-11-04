@@ -1,342 +1,309 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+/**
+ * Starter page generation (`--pages`) for Velocity 2.
+ *
+ * Velocity 2 keeps page content in views (src/views/<Name>View.astro, which
+ * take a `locale` prop). Pages are thin wrappers: one for the default locale
+ * and a [lang] wrapper for other locales (it generates nothing while only one
+ * locale is enabled, so adding locales later just works). Routes and nav live
+ * in src/config/nav.config.ts, and all copy goes through useTranslations.
+ */
+
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { PageLayout } from '../types.js';
 
-/**
- * Converts a page slug to a display title
- * e.g., 'about-us' -> 'About Us'
- */
-function toTitle(slug: string): string {
-  return slug
-    .split('-')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+/** Slugs that collide with core Velocity routes. */
+const RESERVED_SLUGS = ['index', 'blog', '404', 'rss', 'search', 'lang'];
+
+const ROUTES_OPEN = 'export const routes = {';
+const NAV_ITEMS_OPEN = 'export const navItems: NavItem[] = [';
+
+export interface PageSpec {
+  /** Display title, e.g. "Pricing Plans" */
+  title: string;
+  /** URL slug, e.g. "pricing-plans" */
+  slug: string;
+  /** Route id (camelCase), e.g. "pricingPlans" */
+  id: string;
+  /** View component name, e.g. "PricingPlansView" */
+  view: string;
+  /** Translation key namespace, e.g. "pricingPlansPage" */
+  ns: string;
 }
 
-/**
- * Converts a page slug to a route ID (snake_case)
- * e.g., 'about-us' -> 'about_us'
- */
-function toRouteId(slug: string): string {
-  return slug.replace(/-/g, '_');
-}
-
-/**
- * Calculates the next available nav order by finding the highest existing order
- */
-function getNextNavOrder(content: string): number {
-  // Match all order values in nav configs
-  const orderMatches = [...content.matchAll(/order:\s*(\d+)/g)];
-  let maxOrder = 0;
-
-  for (const match of orderMatches) {
-    const orderStr = match[1];
-    if (orderStr) {
-      const order = parseInt(orderStr, 10);
-      if (order > maxOrder) {
-        maxOrder = order;
-      }
-    }
-  }
-
-  // Return the next order (10 more than current max for room to insert)
-  return maxOrder + 10;
-}
-
-/**
- * Adds a new nav entry to nav.config.ts (non-i18n projects)
- * So the generated page appears in site navigation
- */
-function addNavEntry(targetDir: string, pageName: string): void {
-  const navConfigPath = join(targetDir, 'src', 'config', 'nav.config.ts');
-
-  if (!existsSync(navConfigPath)) {
-    return; // nav.config.ts doesn't exist, skip
-  }
-
-  const title = toTitle(pageName);
-  const content = readFileSync(navConfigPath, 'utf-8');
-
-  // Check if entry already exists
-  if (content.includes(`href: '/${pageName}'`)) {
-    return; // Nav entry already defined
-  }
-
-  // Calculate the next nav order
-  const navOrder = getNextNavOrder(content);
-
-  // Find the closing bracket of the navItems array
-  const insertPoint = content.indexOf('];');
-  if (insertPoint === -1) {
-    return; // Can't find insertion point
-  }
-
-  const newEntry = `  { label: '${title}', href: '/${pageName}', order: ${navOrder} },\n`;
-
-  const newContent = content.slice(0, insertPoint) + newEntry + content.slice(insertPoint);
-  writeFileSync(navConfigPath, newContent);
-}
-
-/**
- * Adds a new route entry to i18n routes.ts
- * Creates the route with the same English slug for all locales (user customizes later)
- * Includes nav config so the page appears in navigation
- */
-function addI18nRouteEntry(targetDir: string, pageName: string): void {
-  const routesPath = join(targetDir, 'src', 'i18n', 'routes.ts');
-
-  if (!existsSync(routesPath)) {
-    return; // routes.ts doesn't exist, skip
-  }
-
-  const routeId = toRouteId(pageName);
-  const content = readFileSync(routesPath, 'utf-8');
-
-  // Check if route already exists
-  if (content.includes(`${routeId}:`)) {
-    return; // Route already defined
-  }
-
-  // Find the closing of routes object (before "} as const satisfies")
-  const insertPoint = content.indexOf('} as const satisfies');
-  if (insertPoint === -1) {
-    return; // Can't find insertion point
-  }
-
-  // Calculate the next nav order
-  const navOrder = getNextNavOrder(content);
-
-  // Create new route entry with nav config
-  // Uses the route ID as the translation key (user should add translation)
-  const title = toTitle(pageName);
-  const newRoute = `
-  // Custom page: ${pageName}
-  ${routeId}: {
-    en: '${pageName}', es: '${pageName}', fr: '${pageName}',
-    nav: { show: true, order: ${navOrder}, label: 'nav.${routeId}' },
-  },
-`;
-
-  const newContent = content.slice(0, insertPoint) + newRoute + content.slice(insertPoint);
-  writeFileSync(routesPath, newContent);
-
-  // Also add translation keys to translation files
-  addI18nTranslationKeys(targetDir, routeId, title);
-}
-
-/**
- * Adds translation keys for a new route to all i18n translation files
- */
-function addI18nTranslationKeys(targetDir: string, routeId: string, title: string): void {
-  const locales = ['en', 'es', 'fr'];
-
-  for (const locale of locales) {
-    const translationPath = join(targetDir, 'src', 'i18n', 'translations', `${locale}.ts`);
-
-    if (!existsSync(translationPath)) {
-      continue;
-    }
-
-    let content = readFileSync(translationPath, 'utf-8');
-
-    // Add nav translation if not exists
-    if (!content.includes(`${routeId}:`)) {
-      // Find the nav section and add the key
-      const navSectionMatch = content.match(/nav:\s*\{([^}]+)\}/);
-      if (navSectionMatch) {
-        const navSection = navSectionMatch[0];
-        const insertPoint = navSection.lastIndexOf('}');
-        const newNavSection =
-          navSection.slice(0, insertPoint) +
-          `    ${routeId}: '${title}',\n  ` +
-          navSection.slice(insertPoint);
-        content = content.replace(navSection, newNavSection);
-      }
-    }
-
-    // Add page-specific translations if not exists
-    const pageKeyPattern = new RegExp(`^\\s*${routeId}:\\s*\\{`, 'm');
-    if (!pageKeyPattern.test(content)) {
-      // Find a good insertion point (before the closing export)
-      const insertPoint = content.lastIndexOf('} as const');
-      if (insertPoint !== -1) {
-        const pageTranslations = `
-  // ${title} page
-  ${routeId}: {
-    title: '${title}',
-    description: 'Add your ${title.toLowerCase()} page description here.',
-  },
-
-`;
-        content = content.slice(0, insertPoint) + pageTranslations + content.slice(insertPoint);
-      }
-    }
-
-    writeFileSync(translationPath, content);
+export class PagesUnsupportedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PagesUnsupportedError';
   }
 }
 
+function words(name: string): string[] {
+  return name
+    .trim()
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean);
+}
+
+const capitalize = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+const pascalWord = (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+
 /**
- * Generates the standard page template (non-i18n)
+ * Derives every name used for a page from what the user typed.
+ * "Pricing Plans" → slug pricing-plans, id pricingPlans, view PricingPlansView,
+ * namespace pricingPlansPage. Returns null if the name has no usable characters.
  */
-function generatePageTemplate(pageName: string, layout: PageLayout): string {
-  const title = toTitle(pageName);
+export function toPageSpec(name: string): PageSpec | null {
+  const parts = words(name);
+  if (parts.length === 0) return null;
+
+  const pascal = parts.map(pascalWord).join('');
+  let id = parts[0]!.toLowerCase() + parts.slice(1).map(pascalWord).join('');
+  let view = `${pascal}View`;
+  if (/^[0-9]/.test(id)) {
+    id = `page${pascal}`;
+    view = `Page${pascal}View`;
+  }
+
+  return {
+    title: parts.map(capitalize).join(' '),
+    slug: parts.map((w) => w.toLowerCase()).join('-'),
+    id,
+    view,
+    ns: `${id}Page`,
+  };
+}
+
+/**
+ * Parses comma-separated page names, dropping empty, reserved and duplicate ones.
+ */
+export function parsePageNames(input: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of input.split(',')) {
+    const spec = toPageSpec(raw);
+    if (!spec || RESERVED_SLUGS.includes(spec.slug) || seen.has(spec.slug)) continue;
+    seen.add(spec.slug);
+    result.push(raw.trim());
+  }
+  return result;
+}
+
+const quote = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+
+export function viewTemplate(spec: PageSpec, layout: PageLayout): string {
   const layoutName = layout === 'landing' ? 'LandingLayout' : 'PageLayout';
-
   return `---
 import ${layoutName} from '@/layouts/${layoutName}.astro';
----
+import { useTranslations, type Locale } from '@/i18n';
 
-<${layoutName}
-  title="${title}"
-  description="Add your description here"
->
-  <!-- Hero Section -->
-  <section class="py-20 bg-secondary">
-    <div class="container">
-      <h1 class="text-4xl font-bold text-foreground">${title}</h1>
-      <p class="mt-4 text-foreground-muted max-w-2xl">
-        Add your content here.
-      </p>
-    </div>
-  </section>
-
-  <!-- Content Section -->
-  <section class="py-16">
-    <div class="container">
-      <!-- Your content -->
-    </div>
-  </section>
-</${layoutName}>
-`;
+interface Props {
+  locale: Locale;
 }
 
-/**
- * Generates the i18n-aware page template with translated URL support
- */
-function generateI18nPageTemplate(pageName: string, layout: PageLayout): string {
-  const title = toTitle(pageName);
-  const layoutName = layout === 'landing' ? 'LandingLayout' : 'PageLayout';
-  const routeId = toRouteId(pageName);
-  const titleKey = `${routeId}.title`;
-  const descKey = `${routeId}.description`;
-
-  return `---
-import ${layoutName} from '@/layouts/${layoutName}.astro';
-import { locales, isValidLocale, defaultLocale, type Locale } from '@/i18n/config';
-import { useTranslations } from '@/i18n/index';
-import { routes } from '@/i18n/routes';
-
-export function getStaticPaths() {
-  return locales
-    .filter((lang) => lang !== defaultLocale)
-    .map((lang) => ({
-      params: {
-        lang,
-        ${routeId}: routes.${routeId}[lang],
-      },
-    }));
-}
-
-const { lang } = Astro.params;
-
-if (!lang || !isValidLocale(lang)) {
-  return Astro.redirect('/');
-}
-
-const locale = lang as Locale;
+const { locale } = Astro.props;
 const t = useTranslations(locale);
 ---
 
-<${layoutName}
-  title={t('${titleKey}') || '${title}'}
-  description={t('${descKey}') || 'Add your description here'}
-  lang={locale}
-  routeId="${routeId}"
->
-  <!-- Hero Section -->
-  <section class="py-20 bg-secondary">
-    <div class="container">
-      <h1 class="text-4xl font-bold text-foreground">
-        {t('${titleKey}') || '${title}'}
-      </h1>
-      <p class="mt-4 text-foreground-muted max-w-2xl">
-        {t('${descKey}') || 'Add your content here.'}
-      </p>
-    </div>
-  </section>
-
-  <!-- Content Section -->
-  <section class="py-16">
-    <div class="container">
-      <!-- Your content -->
-    </div>
+<${layoutName} title={t('${spec.ns}.title')} description={t('${spec.ns}.description')}>
+  <section class="mx-auto max-w-4xl px-6 py-24">
+    <h1 class="font-display text-foreground text-4xl font-bold tracking-tight md:text-5xl">{t('${spec.ns}.title')}</h1>
+    <p class="text-foreground-muted mt-6 text-lg">{t('${spec.ns}.description')}</p>
   </section>
 </${layoutName}>
 `;
 }
 
-/**
- * Generates pages in the target directory
- */
-export async function generatePages(
-  targetDir: string,
-  pages: string[],
-  layout: PageLayout,
-  isI18n: boolean
-): Promise<string[]> {
-  const generatedFiles: string[] = [];
+export function pageTemplate(spec: PageSpec): string {
+  return `---
+import ${spec.view} from '@/views/${spec.view}.astro';
+import { defaultLocale } from '@/i18n';
+---
 
-  if (pages.length === 0) {
-    return generatedFiles;
+<${spec.view} locale={defaultLocale} />
+`;
+}
+
+export function localizedPageTemplate(spec: PageSpec): string {
+  return `---
+import ${spec.view} from '@/views/${spec.view}.astro';
+import { getLocalizedStaticPaths, type Locale } from '@/i18n';
+
+export function getStaticPaths() {
+  return getLocalizedStaticPaths('${spec.id}', '${spec.id}');
+}
+
+const { locale } = Astro.props as { locale: Locale };
+---
+
+<${spec.view} locale={locale} />
+`;
+}
+
+/** Finds the [start, end) character range of a block opened by `opener` and closed by a line starting with `closer`. */
+function findBlock(content: string, opener: string, closer: string): { bodyStart: number; closeStart: number } | null {
+  const open = content.indexOf(opener);
+  if (open === -1) return null;
+  const bodyStart = content.indexOf('\n', open) + 1;
+  if (bodyStart === 0) return null;
+  const closeRe = new RegExp(`^${closer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'm');
+  const rest = content.slice(bodyStart);
+  const match = closeRe.exec(rest);
+  if (!match) return null;
+  return { bodyStart, closeStart: bodyStart + match.index };
+}
+
+/** Inserts `entry` (a full line) as the last entry of a block, adding a trailing comma to the previous entry if needed. */
+function insertLastEntry(content: string, block: { bodyStart: number; closeStart: number }, entry: string): string {
+  let before = content.slice(0, block.closeStart);
+  const trimmed = before.replace(/\s+$/, '');
+  if (block.closeStart > block.bodyStart && trimmed.length > 0 && !/[,{[]$/.test(trimmed)) {
+    before = `${trimmed},\n`;
   }
+  return before + entry + content.slice(block.closeStart);
+}
 
-  // Ensure pages directory exists
-  const pagesDir = join(targetDir, 'src', 'pages');
-  if (!existsSync(pagesDir)) {
-    mkdirSync(pagesDir, { recursive: true });
-  }
-
-  // Generate standard pages (English / default locale)
-  for (const pageName of pages) {
-    const filePath = join(pagesDir, `${pageName}.astro`);
-    const template = generatePageTemplate(pageName, layout);
-    writeFileSync(filePath, template);
-    generatedFiles.push(`src/pages/${pageName}.astro`);
-
-    // Add nav entry to nav.config.ts (for non-i18n nav)
-    if (!isI18n) {
-      addNavEntry(targetDir, pageName);
-    }
-  }
-
-  // Generate i18n pages if enabled
-  if (isI18n) {
-    const langDir = join(pagesDir, '[lang]');
-    if (!existsSync(langDir)) {
-      mkdirSync(langDir, { recursive: true });
-    }
-
-    for (const pageName of pages) {
-      const routeId = toRouteId(pageName);
-      // Use rest parameter syntax for translated URL slugs
-      const filePath = join(langDir, `[...${routeId}].astro`);
-      const template = generateI18nPageTemplate(pageName, layout);
-      writeFileSync(filePath, template);
-      generatedFiles.push(`src/pages/[lang]/[...${routeId}].astro`);
-
-      // Add route entry to i18n routes.ts
-      addI18nRouteEntry(targetDir, pageName);
-    }
-  }
-
-  return generatedFiles;
+/** Returns true if the routes block already defines `id`. */
+export function hasRoute(navConfig: string, id: string): boolean {
+  const block = findBlock(navConfig, ROUTES_OPEN, '}');
+  if (!block) return false;
+  const body = navConfig.slice(block.bodyStart, block.closeStart);
+  return new RegExp(`^\\s*['"]?${id}['"]?\\s*:`, 'm').test(body);
 }
 
 /**
- * List of page-related files that could be generated
+ * Adds the route and nav item for a page to nav.config.ts content.
  */
-export const PAGES_FILES = [
-  'src/pages/{pageName}.astro',
-  'src/pages/[lang]/[...{routeId}].astro',
-];
+export function addToNavConfig(navConfig: string, spec: PageSpec): string {
+  const routes = findBlock(navConfig, ROUTES_OPEN, '}');
+  if (!routes) throw new PagesUnsupportedError('nav.config.ts has no `export const routes = {` block.');
+  let content = insertLastEntry(navConfig, routes, `  ${spec.id}: { path: '${spec.slug}' },\n`);
+
+  const nav = findBlock(content, NAV_ITEMS_OPEN, ']');
+  if (nav) {
+    const body = content.slice(nav.bodyStart, nav.closeStart);
+    const orders = [...body.matchAll(/order:\s*(-?\d+)/g)].map((m) => parseInt(m[1]!, 10));
+    const next = (orders.length > 0 ? Math.max(...orders) : 0) + 1;
+    content = insertLastEntry(
+      content,
+      nav,
+      `  { label: '${spec.ns}.title', route: '${spec.id}', order: ${next} },\n`
+    );
+  }
+  return content;
+}
+
+/** Matches the line that opens a translation file's top-level object. */
+const TRANSLATIONS_OPEN = /^(?:export[ \t]+)?const[ \t]+[A-Za-z_$][\w$]*[ \t]*(?::[^=\n]+)?=[ \t]*\{[ \t]*$/m;
+
+/**
+ * Adds the page's title/description keys right after the line that opens the
+ * top-level object. Returns null if no such line is found.
+ */
+export function addToTranslations(source: string, spec: PageSpec): string | null {
+  const match = TRANSLATIONS_OPEN.exec(source);
+  if (!match) return null;
+  const insertAt = match.index + match[0].length + 1;
+  const entry =
+    `  ${spec.ns}: {\n` +
+    `    title: ${quote(spec.title)},\n` +
+    `    description: ${quote(`Describe the ${spec.title} page here.`)},\n` +
+    `  },\n`;
+  return source.slice(0, insertAt) + entry + source.slice(insertAt);
+}
+
+function writeFile(targetDir: string, rel: string, content: string): void {
+  const full = join(targetDir, rel);
+  mkdirSync(dirname(full), { recursive: true });
+  writeFileSync(full, content);
+}
+
+export interface GeneratePagesResult {
+  /** Files created or modified, relative to the project */
+  files: string[];
+  /** Page titles that were generated */
+  generated: string[];
+  warnings: string[];
+}
+
+/**
+ * Generates starter pages. Pages whose route id, view or page file already
+ * exists are skipped with a warning. Throws PagesUnsupportedError if the
+ * project does not have the Velocity 2 structure.
+ */
+export function generatePages(targetDir: string, pageNames: string[], layout: PageLayout): GeneratePagesResult {
+  const result: GeneratePagesResult = { files: [], generated: [], warnings: [] };
+  if (pageNames.length === 0) return result;
+
+  const viewsDir = join(targetDir, 'src', 'views');
+  const navPath = join(targetDir, 'src', 'config', 'nav.config.ts');
+  const unsupported =
+    '--pages requires Velocity 2 (src/views and the `routes` export in src/config/nav.config.ts).';
+  if (!existsSync(viewsDir) || !statSync(viewsDir).isDirectory() || !existsSync(navPath)) {
+    throw new PagesUnsupportedError(unsupported);
+  }
+  let navConfig = readFileSync(navPath, 'utf-8');
+  if (!findBlock(navConfig, ROUTES_OPEN, '}')) throw new PagesUnsupportedError(unsupported);
+
+  if (layout === 'landing' && !existsSync(join(targetDir, 'src', 'layouts', 'LandingLayout.astro'))) {
+    result.warnings.push('LandingLayout.astro not found; using PageLayout.');
+    layout = 'page';
+  }
+
+  const translationsDir = join(targetDir, 'src', 'i18n', 'translations');
+  const translationFiles = existsSync(translationsDir)
+    ? readdirSync(translationsDir).filter((f) => f.endsWith('.ts')).sort()
+    : [];
+  const translations = new Map(
+    translationFiles.map((f) => [f, readFileSync(join(translationsDir, f), 'utf-8')] as const)
+  );
+  const touched = new Set<string>();
+
+  for (const name of pageNames) {
+    const spec = toPageSpec(name);
+    if (!spec) continue;
+
+    const viewRel = `src/views/${spec.view}.astro`;
+    const pageRel = `src/pages/${spec.slug}.astro`;
+    const langRel = `src/pages/[lang]/[...${spec.id}].astro`;
+
+    const conflicts: string[] = [];
+    if (hasRoute(navConfig, spec.id)) conflicts.push(`route "${spec.id}"`);
+    for (const rel of [viewRel, pageRel, langRel]) {
+      if (existsSync(join(targetDir, rel))) conflicts.push(rel);
+    }
+    if (conflicts.length > 0) {
+      result.warnings.push(`Skipped page "${spec.title}": ${conflicts.join(', ')} already exists.`);
+      continue;
+    }
+
+    writeFile(targetDir, viewRel, viewTemplate(spec, layout));
+    writeFile(targetDir, pageRel, pageTemplate(spec));
+    writeFile(targetDir, langRel, localizedPageTemplate(spec));
+    result.files.push(viewRel, pageRel, langRel);
+
+    navConfig = addToNavConfig(navConfig, spec);
+    touched.add('src/config/nav.config.ts');
+
+    for (const [file, source] of translations) {
+      const updated = addToTranslations(source, spec);
+      if (updated === null) {
+        result.warnings.push(`Could not add "${spec.ns}" strings to src/i18n/translations/${file}; add them manually.`);
+        continue;
+      }
+      translations.set(file, updated);
+      touched.add(`src/i18n/translations/${file}`);
+    }
+
+    result.generated.push(spec.title);
+  }
+
+  if (touched.has('src/config/nav.config.ts')) writeFileSync(navPath, navConfig);
+  for (const [file, source] of translations) {
+    const rel = `src/i18n/translations/${file}`;
+    if (touched.has(rel)) writeFileSync(join(translationsDir, file), source);
+  }
+  result.files.push(...touched);
+
+  return result;
+}

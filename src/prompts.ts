@@ -6,6 +6,8 @@ import { validateProjectName, toValidProjectName } from './utils/validate.js';
 import { detectPackageManager } from './utils/package-manager.js';
 import { fetchRegistry } from './registry/fetcher.js';
 import { getComponentsByCategory, resolveDependencies, getSelectionStats } from './registry/resolver.js';
+import type { TemplateSource } from './template-source.js';
+import { parsePageNames } from './features/pages.js';
 
 interface PromptDefaults {
   projectName?: string;
@@ -13,20 +15,10 @@ interface PromptDefaults {
   componentSelection?: ComponentSelection;
   i18n?: boolean;
   pages?: boolean;
-}
-
-/**
- * Parses comma-separated page names into an array of valid page slugs
- */
-function parsePageNames(input: string): string[] {
-  if (!input.trim()) return [];
-
-  return input
-    .split(',')
-    .map((name) => name.trim().toLowerCase())
-    .filter((name) => name.length > 0)
-    .map((name) => name.replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''))
-    .filter((name) => name.length > 0 && !['index', 'blog', '404', 'rss'].includes(name));
+  /** Page names given on the command line (skips the page prompts) */
+  pageNames?: string[];
+  /** Template the registry is read from, so prompts list the components being scaffolded */
+  templateSource?: TemplateSource;
 }
 
 /**
@@ -54,7 +46,7 @@ async function promptComponentMode(): Promise<ComponentSelectionMode> {
       {
         value: 'none' as ComponentSelectionMode,
         label: 'None',
-        hint: 'Minimal template',
+        hint: 'Only the components core pages need',
       },
     ],
     initialValue: 'all' as ComponentSelectionMode,
@@ -147,7 +139,8 @@ async function promptComponents(registry: ComponentRegistry): Promise<string[]> 
  * Gets component selection from user prompts
  */
 async function getComponentSelection(
-  defaultSelection?: ComponentSelection
+  defaultSelection?: ComponentSelection,
+  templateSource?: TemplateSource
 ): Promise<ComponentSelection> {
   if (defaultSelection) {
     return defaultSelection;
@@ -155,7 +148,7 @@ async function getComponentSelection(
 
   let registry: ComponentRegistry;
   try {
-    registry = await fetchRegistry();
+    registry = await fetchRegistry(templateSource);
   } catch {
     // Fallback to simple yes/no if registry unavailable
     const useComponents = await p.select({
@@ -256,7 +249,7 @@ export async function runPrompts(defaults: PromptDefaults = {}): Promise<PromptA
                 initialValue: false,
               }),
 
-      componentSelection: () => getComponentSelection(defaults.componentSelection),
+      componentSelection: () => getComponentSelection(defaults.componentSelection, defaults.templateSource),
 
       i18n:
         defaults.i18n !== undefined
@@ -280,7 +273,9 @@ export async function runPrompts(defaults: PromptDefaults = {}): Promise<PromptA
               }),
 
       generatePages:
-        defaults.pages !== undefined
+        defaults.pageNames && defaults.pageNames.length > 0
+          ? () => Promise.resolve(true)
+          : defaults.pages !== undefined
           ? () => Promise.resolve(defaults.pages)
           : () =>
               p.select({
@@ -301,10 +296,12 @@ export async function runPrompts(defaults: PromptDefaults = {}): Promise<PromptA
               }),
 
       pageNames: ({ results }) =>
-        results.generatePages
+        defaults.pageNames && defaults.pageNames.length > 0
+          ? Promise.resolve(defaults.pageNames.join(', '))
+          : results.generatePages
           ? p.text({
               message: 'Enter page names (comma-separated):',
-              placeholder: 'about, pricing, faq, contact',
+              placeholder: 'Pricing, Team, FAQ',
               validate: (value) => {
                 const pages = parsePageNames(value);
                 if (pages.length === 0) {

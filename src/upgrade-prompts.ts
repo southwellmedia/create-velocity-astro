@@ -57,8 +57,9 @@ export function showChangeSummary(
   const depUpdates = Object.entries(manifest.dependencies.update);
   const depRemoves = manifest.dependencies.remove;
   const depAdds = Object.entries(manifest.dependencies.add);
+  const devDepAdds = Object.entries(manifest.dependencies.addDev ?? {});
 
-  if (depUpdates.length > 0 || depRemoves.length > 0 || depAdds.length > 0) {
+  if (depUpdates.length > 0 || depRemoves.length > 0 || depAdds.length > 0 || devDepAdds.length > 0) {
     lines.push(pc.bold('  Dependency changes:'));
     for (const [name, version] of depUpdates) {
       lines.push(`    ${pc.cyan('~')} ${name} → ${version}`);
@@ -68,6 +69,9 @@ export function showChangeSummary(
     }
     for (const [name, version] of depAdds) {
       lines.push(`    ${pc.green('+')} ${name}@${version}`);
+    }
+    for (const [name, version] of devDepAdds) {
+      lines.push(`    ${pc.green('+')} ${name}@${version} ${pc.dim('(dev)')}`);
     }
   }
 

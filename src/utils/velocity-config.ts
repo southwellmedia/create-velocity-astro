@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { VelocityConfig, ScaffoldOptions } from '../types.js';
 import { readJson, writeJson } from './fs.js';
+import { sourceRecord } from '../template-source.js';
 
 const CONFIG_FILENAME = '.velocity.json';
 
@@ -56,5 +57,6 @@ export function createInitialConfig(options: ScaffoldOptions, version: string): 
       i18n: options.i18n,
       components: componentsValue,
     },
+    template: sourceRecord(options.templateSource),
   };
 }

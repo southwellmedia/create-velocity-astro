@@ -1,7 +1,7 @@
 {
   "name": "create-velocity-astro",
-  "version": "1.8.1",
-  "description": "Create Velocity - A CLI to scaffold production-ready Astro 6 + Tailwind v4 projects",
+  "version": "2.0.0",
+  "description": "Create Velocity - A CLI to scaffold production-ready Astro 7 + Tailwind v4 projects",
   "type": "module",
   "license": "MIT",
   "author": "Southwell Media <info@southwellmedia.com>",
@@ -30,8 +30,7 @@
     "create-velocity-astro": "./dist/index.js"
   },
   "files": [
-    "dist",
-    "templates"
+    "dist"
   ],
   "exports": {
     ".": {
@@ -44,23 +43,26 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^0.8.2",
     "execa": "^9.5.2",
     "giget": "^3.1.1",
     "mri": "^1.2.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "semver": "^7.8.6"
   },
   "devDependencies": {
     "@types/mri": "^1.1.4",
     "@types/node": "^22.10.0",
+    "@types/semver": "^7.8.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.19.0"
   }
 }
