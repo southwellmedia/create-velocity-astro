@@ -169,6 +169,15 @@ node scripts/upgrade-smoke.mjs --template ../velocity
 
 Both scripts need pnpm. CI runs them against Velocity `main`.
 
+### Releasing
+
+Bump `version` in `package.json` and merge to `main`, then push a matching tag. The `Publish to npm` workflow tests and publishes it:
+
+```bash
+git tag v2.1.0
+git push origin v2.1.0
+```
+
 ## License
 
 MIT - [Southwell Media](https://southwellmedia.com)
