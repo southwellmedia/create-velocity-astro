@@ -1,44 +1,58 @@
 /**
  * Registry Fetcher
- * Fetches the component registry from GitHub
+ * Fetches the component registry for a template source (GitHub ref or local directory)
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ComponentRegistry } from './types.js';
+import type { TemplateSource } from '../template-source.js';
 
-const REGISTRY_URL = 'https://raw.githubusercontent.com/southwellmedia/velocity/main/component-registry.json';
+const RAW_BASE = 'https://raw.githubusercontent.com/southwellmedia/velocity';
 
-let cachedRegistry: ComponentRegistry | null = null;
+const cache = new Map<string, ComponentRegistry>();
 
 /**
- * Fetches the component registry from GitHub
- * Results are cached for the duration of the process
+ * Fetches the component registry. Defaults to the `main` branch on GitHub.
+ * Results are cached per source for the duration of the process.
  */
-export async function fetchRegistry(): Promise<ComponentRegistry> {
-  if (cachedRegistry) {
-    return cachedRegistry;
-  }
+export async function fetchRegistry(source?: TemplateSource): Promise<ComponentRegistry> {
+  const key = source?.kind === 'local' ? `local:${source.dir}` : `ref:${source?.ref ?? 'main'}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
 
-  try {
-    const response = await fetch(REGISTRY_URL);
+  let registry: ComponentRegistry;
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch registry: ${response.status} ${response.statusText}`);
+  if (source?.kind === 'local') {
+    const registryPath = join(source.dir, 'component-registry.json');
+    if (!existsSync(registryPath)) {
+      throw new Error(`component-registry.json not found in ${source.dir}`);
     }
-
-    cachedRegistry = await response.json() as ComponentRegistry;
-    return cachedRegistry;
-  } catch (error) {
-    throw new Error(
-      `Could not fetch component registry. Please check your internet connection.\n${error instanceof Error ? error.message : ''}`
-    );
+    registry = JSON.parse(readFileSync(registryPath, 'utf-8')) as ComponentRegistry;
+  } else {
+    const ref = source?.ref ?? 'main';
+    try {
+      const response = await fetch(`${RAW_BASE}/${encodeURIComponent(ref)}/component-registry.json`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch registry: ${response.status} ${response.statusText}`);
+      }
+      registry = (await response.json()) as ComponentRegistry;
+    } catch (error) {
+      throw new Error(
+        `Could not fetch component registry. Please check your internet connection.\n${error instanceof Error ? error.message : ''}`
+      );
+    }
   }
+
+  cache.set(key, registry);
+  return registry;
 }
 
 /**
  * Fetches a single file from the velocity repository
  */
-export async function fetchComponentFile(filePath: string): Promise<string> {
-  const url = `https://raw.githubusercontent.com/southwellmedia/velocity/main/${filePath}`;
+export async function fetchComponentFile(filePath: string, ref = 'main'): Promise<string> {
+  const url = `${RAW_BASE}/${encodeURIComponent(ref)}/${filePath}`;
 
   try {
     const response = await fetch(url);
@@ -59,5 +73,5 @@ export async function fetchComponentFile(filePath: string): Promise<string> {
  * Clears the cached registry
  */
 export function clearRegistryCache(): void {
-  cachedRegistry = null;
+  cache.clear();
 }

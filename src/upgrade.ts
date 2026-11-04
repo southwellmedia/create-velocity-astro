@@ -4,11 +4,11 @@ import { join, dirname, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
-import { downloadTemplate } from 'giget';
 import type { UpgradeOptions, UpgradeManifest, MigrationStep } from './types.js';
 import { readVelocityConfig, writeVelocityConfig } from './utils/velocity-config.js';
-import { readJson } from './utils/fs.js';
-import { diffProjects, summarizeDiffs, computeFileHashes } from './utils/diff.js';
+import { diffProjects, diffStructural, summarizeDiffs, computeFileHashes } from './utils/diff.js';
+import { applyDependencyChanges, applyPackageJsonChanges, hasDependencyChanges } from './utils/dependencies.js';
+import type { PackageJson } from './utils/dependencies.js';
 import {
   showUpgradeIntro,
   showChangeSummary,
@@ -19,32 +19,17 @@ import {
   showUpgradeOutro,
   warnDirtyGit,
 } from './upgrade-prompts.js';
+import { describeSource, fetchTemplate, resolveTemplateSource, sourceRecord } from './template-source.js';
+import type { TemplateSource } from './template-source.js';
+import {
+  checkGates,
+  parseStoredComponentSelection,
+  readManifest,
+  runVariantPipeline,
+  ScaffoldGateError,
+} from './variants.js';
 
 declare const CLI_VERSION: string;
-
-const TEMPLATE_REPO = 'github:southwellmedia/velocity';
-
-// Hardcoded fallback safe list if manifest is missing from template
-const FALLBACK_SAFE_FILES = [
-  'src/components/ui/',
-  'src/components/seo/',
-  'src/components/layout/',
-  'src/layouts/',
-  'src/lib/',
-  'src/styles/tokens/',
-  'src/styles/themes/',
-  'src/styles/global.css',
-  'src/content.config.ts',
-  'src/config/nav.config.ts',
-  'tsconfig.json',
-  'eslint.config.js',
-  '.prettierrc',
-  '.prettierignore',
-  '.gitignore',
-  'vercel.json',
-  'netlify.toml',
-  'wrangler.toml',
-];
 
 /**
  * Checks if the project has uncommitted git changes.
@@ -112,6 +97,15 @@ function filterMigrations(migrations: MigrationStep[], currentVersion: string): 
 /**
  * Scans user files for migration patterns and returns matches.
  */
+function compilePattern(pattern: string): RegExp {
+  try {
+    return new RegExp(pattern);
+  } catch {
+    // A bad pattern in a manifest must not stop an upgrade: match it literally
+    return new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  }
+}
+
 function scanForMigrationPatterns(
   targetDir: string,
   migrations: MigrationStep[]
@@ -124,7 +118,7 @@ function scanForMigrationPatterns(
       continue;
     }
 
-    const regex = new RegExp(migration.pattern);
+    const regex = compilePattern(migration.pattern);
     const matches: string[] = [];
 
     // Determine search paths
@@ -191,37 +185,9 @@ function mergePackageJsonDeps(
   const pkgPath = join(targetDir, 'package.json');
   if (!existsSync(pkgPath)) return;
 
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-
-  // Update dependencies
-  for (const [name, version] of Object.entries(manifest.dependencies.update)) {
-    if (pkg.dependencies?.[name] !== undefined) {
-      pkg.dependencies[name] = version;
-    } else if (pkg.devDependencies?.[name] !== undefined) {
-      pkg.devDependencies[name] = version;
-    } else {
-      // Default to dependencies
-      if (!pkg.dependencies) pkg.dependencies = {};
-      pkg.dependencies[name] = version;
-    }
-  }
-
-  // Remove dependencies
-  for (const name of manifest.dependencies.remove) {
-    if (pkg.dependencies?.[name] !== undefined) {
-      delete pkg.dependencies[name];
-    }
-    if (pkg.devDependencies?.[name] !== undefined) {
-      delete pkg.devDependencies[name];
-    }
-  }
-
-  // Add new dependencies
-  for (const [name, version] of Object.entries(manifest.dependencies.add)) {
-    if (!pkg.dependencies) pkg.dependencies = {};
-    pkg.dependencies[name] = version;
-  }
-
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as PackageJson;
+  applyDependencyChanges(pkg, manifest.dependencies);
+  applyPackageJsonChanges(pkg, manifest.packageJson);
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 }
 
@@ -277,23 +243,32 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     if (!proceed) return;
   }
 
-  // 2. Download latest template to temp dir
+  // 2. Resolve the template source and fetch it into a temp dir
+  let templateSource: TemplateSource;
+  try {
+    templateSource = await resolveTemplateSource(
+      { ref: options.ref, template: options.template },
+      { notice: (message) => p.log.warn(pc.yellow(message)) }
+    );
+  } catch (error) {
+    p.log.error(pc.red(error instanceof Error ? error.message : String(error)));
+    process.exit(1);
+  }
+  const sourceLabel = describeSource(templateSource);
+
   const spinner = p.spinner();
-  spinner.start('Downloading latest template...');
+  spinner.start(`Fetching template (${sourceLabel})...`);
 
   const tempDir = join(tmpdir(), `velocity-upgrade-${Date.now()}`);
 
   try {
-    await downloadTemplate(TEMPLATE_REPO, {
-      dir: tempDir,
-      force: true,
-    });
-    spinner.stop('Template downloaded');
+    await fetchTemplate(templateSource, tempDir);
+    spinner.stop(`Template fetched (${sourceLabel})`);
   } catch (error) {
-    spinner.stop('Failed to download template');
+    spinner.stop('Failed to fetch template');
     p.log.error(
       pc.red(
-        'Could not download template. Check your internet connection.\n' +
+        `Could not fetch ${sourceLabel}. Check your internet connection and that the ref exists.\n` +
         (error instanceof Error ? error.message : '')
       )
     );
@@ -301,56 +276,47 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     process.exit(1);
   }
 
-  // 3. Read velocity-manifest.json from fresh template
+  // 3. Read velocity-manifest.json and run the version gates
   let manifest: UpgradeManifest;
-  const manifestPath = join(tempDir, 'velocity-manifest.json');
 
-  if (existsSync(manifestPath)) {
-    manifest = readJson<UpgradeManifest>(manifestPath);
-  } else {
-    // Fallback: use hardcoded safe list
-    p.log.warn(pc.yellow('Manifest not found in template. Using fallback file list.'));
+  try {
+    const rawManifest = readManifest<UpgradeManifest>(tempDir);
+    const { scaffold: scaffoldSection } = checkGates(rawManifest, {
+      cliVersion: CLI_VERSION,
+      mode: 'upgrade',
+      sourceLabel,
+    });
+    manifest = normalizeManifest(rawManifest!);
 
-    // Try to read version from template's package.json
-    let templateVersion = config.version;
-    const templatePkgPath = join(tempDir, 'package.json');
-    if (existsSync(templatePkgPath)) {
-      const templatePkg = readJson<{ version?: string }>(templatePkgPath);
-      if (templatePkg.version) {
-        templateVersion = templatePkg.version;
-      }
+    // Legacy top-level CLI version requirement
+    if (manifest.minCliVersion && isVersionLessThan(CLI_VERSION, manifest.minCliVersion)) {
+      throw new ScaffoldGateError(
+        `This upgrade requires create-velocity-astro >= ${manifest.minCliVersion}.\n` +
+        'Run `npm create velocity-astro@latest upgrade` to use the latest CLI.'
+      );
     }
 
-    manifest = {
-      version: templateVersion,
-      minCliVersion: '1.0.0',
-      files: {
-        safe: FALLBACK_SAFE_FILES,
-        protected: [],
+    // 3b. Apply the variant pipeline the project was scaffolded with, so a
+    // minimal or i18n project is compared against minimal / i18n files.
+    runVariantPipeline(tempDir, scaffoldSection, {
+      options: {
+        demo: Boolean(config.features?.demo),
+        i18n: Boolean(config.features?.i18n),
       },
-      dependencies: {
-        update: {},
-        remove: [],
-        add: {},
-      },
-      migrations: [],
-    };
-  }
-
-  // Check CLI version requirement
-  if (isVersionLessThan(CLI_VERSION, manifest.minCliVersion)) {
-    p.log.error(
-      pc.red(
-        `This upgrade requires create-velocity-astro >= ${manifest.minCliVersion}.\n` +
-        'Run `npm update -g create-velocity-astro` to update.'
-      )
-    );
+      componentSelection: parseStoredComponentSelection(config.features?.components),
+    });
+  } catch (error) {
+    p.log.error(pc.red(error instanceof Error ? error.message : String(error)));
     cleanup(tempDir);
     process.exit(1);
   }
 
   // Filter migrations to only those relevant to the user's current version
-  manifest.migrations = filterMigrations(manifest.migrations, config.version);
+  manifest.migrations = filterMigrations(manifest.migrations, config.version).filter((migration) =>
+    Object.entries(migration.when ?? {}).every(
+      ([option, value]) => Boolean(config.features?.[option as keyof typeof config.features]) === value
+    )
+  );
 
   // Check if already on latest version
   if (config.version === manifest.version) {
@@ -362,14 +328,13 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   }
 
   // 4. Diff safe files, passing stored hashes for user-modification detection
-  const diffs = diffProjects(targetDir, tempDir, manifest, config.fileHashes);
+  const safeDiffs = diffProjects(targetDir, tempDir, manifest, config.fileHashes);
+  const diffs = [...safeDiffs, ...diffStructural(targetDir, tempDir, manifest, safeDiffs)];
   const { added, modified, conflict } = summarizeDiffs(diffs);
 
   // If no changes at all
-  if (added === 0 && modified === 0 && conflict === 0 &&
-      Object.keys(manifest.dependencies.update).length === 0 &&
-      manifest.dependencies.remove.length === 0 &&
-      Object.keys(manifest.dependencies.add).length === 0) {
+  if (added === 0 && modified === 0 && conflict === 0 && !diffs.some((d) => d.status === 'removed') &&
+      !hasDependencyChanges(manifest.dependencies)) {
     showUpgradeIntro(config.version, manifest.version);
     p.log.info(pc.green('All files are up to date. Updating version marker only.'));
     if (!dryRun) {
@@ -377,6 +342,7 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
         ...config,
         version: manifest.version,
         updatedAt: new Date().toISOString().slice(0, 10),
+        template: sourceRecord(templateSource),
       });
     }
     p.outro('');
@@ -410,9 +376,11 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
 
   // 6a. Back up conflicting files before overwriting
   const conflictDiffs = diffs.filter((d) => d.status === 'conflict');
+  const removedDiffs = diffs.filter((d) => d.status === 'removed');
   let backupDir = '';
-  if (conflictDiffs.length > 0) {
-    backupDir = backupConflicts(targetDir, conflictDiffs, config.version);
+  const backupDiffs = [...conflictDiffs, ...removedDiffs];
+  if (backupDiffs.length > 0) {
+    backupDir = backupConflicts(targetDir, backupDiffs, config.version);
   }
 
   // 6b. Copy modified, added, and conflicting safe files (conflicts get template version)
@@ -431,11 +399,12 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     copyFileSync(src, dest);
   }
 
+  for (const diff of removedDiffs) {
+    rmSync(join(targetDir, diff.path), { force: true });
+  }
+
   // 6c. Merge package.json dependencies
-  const hasDepChanges =
-    Object.keys(manifest.dependencies.update).length > 0 ||
-    manifest.dependencies.remove.length > 0 ||
-    Object.keys(manifest.dependencies.add).length > 0;
+  const hasDepChanges = hasDependencyChanges(manifest.dependencies) || Boolean(manifest.packageJson);
 
   if (hasDepChanges) {
     mergePackageJsonDeps(targetDir, manifest);
@@ -449,6 +418,7 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     ...config,
     version: manifest.version,
     updatedAt: new Date().toISOString().slice(0, 10),
+    template: sourceRecord(templateSource),
     fileHashes: newHashes,
   });
 
@@ -467,8 +437,8 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   p.log.success(pc.green('Updated .velocity.json'));
 
   // 7. Show conflict notice (before protected notice, as it's more urgent)
-  if (conflictDiffs.length > 0) {
-    showConflictNotice(backupDir, conflictDiffs);
+  if (backupDiffs.length > 0) {
+    showConflictNotice(backupDir, backupDiffs);
   }
 
   // 8. Show protected file notice
@@ -495,4 +465,25 @@ function cleanup(tempDir: string): void {
   } catch {
     // Ignore cleanup errors
   }
+}
+
+/**
+ * Fills in optional manifest fields so the rest of the upgrade can rely on them.
+ */
+function normalizeManifest(manifest: UpgradeManifest): UpgradeManifest {
+  return {
+    ...manifest,
+    files: {
+      safe: manifest.files?.safe ?? [],
+      protected: manifest.files?.protected ?? [],
+      seed: manifest.files?.seed ?? [],
+    },
+    dependencies: {
+      update: manifest.dependencies?.update ?? {},
+      remove: manifest.dependencies?.remove ?? [],
+      add: manifest.dependencies?.add ?? {},
+      addDev: manifest.dependencies?.addDev ?? {},
+    },
+    migrations: manifest.migrations ?? [],
+  };
 }

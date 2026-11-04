@@ -87,6 +87,51 @@ function normalizePath(filePath: string): string {
  * - If the user's file differs from its stored hash → user customized it → conflict
  * - If no stored hash exists (pre-hash upgrade) → falls back to overwrite (legacy behavior)
  */
+/**
+ * Changes beyond the safe files, from `files.seed` and `migrations[].replace`.
+ *
+ * Seeded paths are added only when missing, so a new release can introduce files
+ * in protected folders. Replaced paths are for breaking releases: anything that
+ * differs is reported as a conflict, which backs it up before it is overwritten.
+ * Pass only the migrations that apply to this project's version.
+ */
+export function diffStructural(
+  currentDir: string,
+  freshDir: string,
+  manifest: UpgradeManifest,
+  known: FileDiff[] = []
+): FileDiff[] {
+  const seen = new Set(known.map((d) => normalizePath(d.path)));
+  const diffs: FileDiff[] = [];
+
+  const visit = (paths: string[], replace: boolean) => {
+    for (const filePath of expandPaths(paths, freshDir)) {
+      const key = normalizePath(filePath);
+      const freshPath = join(freshDir, filePath);
+      if (seen.has(key) || !existsSync(freshPath)) continue;
+      seen.add(key);
+
+      const currentPath = join(currentDir, filePath);
+      if (!existsSync(currentPath)) {
+        diffs.push({ path: filePath, status: 'added', category: 'protected' });
+      } else if (replace && Buffer.compare(readFileSync(currentPath), readFileSync(freshPath)) !== 0) {
+        diffs.push({ path: filePath, status: 'conflict', category: 'protected' });
+      }
+    }
+  };
+
+  visit(manifest.migrations.flatMap((m) => m.replace ?? []), true);
+  visit(manifest.files.seed ?? [], false);
+
+  for (const filePath of expandPaths(manifest.migrations.flatMap((m) => m.remove ?? []), currentDir)) {
+    if (existsSync(join(currentDir, filePath))) {
+      diffs.push({ path: filePath, status: 'removed', category: 'protected' });
+    }
+  }
+
+  return diffs;
+}
+
 export function diffProjects(
   currentDir: string,
   freshDir: string,

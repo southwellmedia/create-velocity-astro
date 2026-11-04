@@ -1,0 +1,95 @@
+#!/usr/bin/env node
+/**
+ * Upgrade test: create real projects with the last 1.x CLI, upgrade them with
+ * this CLI, then install, type check and build.
+ *
+ *   node scripts/upgrade-smoke.mjs --template ../velocity [--only demo] [--keep]
+ *
+ * Requires a built CLI (`npm run build`), pnpm on PATH and network access.
+ */
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import mri from 'mri';
+
+const OLD_CLI = 'create-velocity-astro@1.8.1';
+// 1.x always downloads Velocity's main branch, so pin it to the release it shipped with
+const OLD_VELOCITY = 'v1.0.0';
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const args = mri(process.argv.slice(2), { string: ['template', 'only'], boolean: ['keep'] });
+
+if (!args.template) {
+  console.log('Usage: node scripts/upgrade-smoke.mjs --template <velocity dir> [--only <name>] [--keep]');
+  process.exit(1);
+}
+
+const template = resolve(args.template);
+const cli = join(repoRoot, 'dist', 'index.js');
+const workDir = mkdtempSync(join(tmpdir(), 'velocity-upgrade-'));
+const astro = join('node_modules', 'astro', 'bin', 'astro.mjs');
+
+const shapes = [
+  { name: 'demo', flags: ['--demo', '--components'] },
+  { name: 'minimal', flags: ['--components'] },
+  { name: 'demo-i18n', flags: ['--demo', '--components', '--i18n'] },
+].filter((s) => !args.only || s.name.includes(args.only));
+
+function run(cmd, list, cwd, env = {}) {
+  const r = spawnSync(cmd, list, {
+    cwd,
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+    env: { ...process.env, CI: 'true', ...env },
+  });
+  return { ok: r.status === 0, output: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+
+// Install the old CLI and pin what it downloads
+const oldCliDir = join(workDir, '.old-cli');
+const installed = run('npm', ['install', '--prefix', oldCliDir, OLD_CLI], workDir);
+if (!installed.ok) {
+  console.log(installed.output);
+  process.exit(1);
+}
+const oldCli = join(oldCliDir, 'node_modules', 'create-velocity-astro', 'dist', 'index.js');
+const source = readFileSync(oldCli, 'utf8');
+const pinned = source
+  .replaceAll('github:southwellmedia/velocity', `github:southwellmedia/velocity#${OLD_VELOCITY}`)
+  .replaceAll('southwellmedia/velocity/main/', `southwellmedia/velocity/${OLD_VELOCITY}/`);
+if (pinned === source) throw new Error('Could not pin the old CLI to a Velocity release');
+writeFileSync(oldCli, pinned);
+
+const results = [];
+for (const { name, flags } of shapes) {
+  const dir = join(workDir, name);
+  console.log(`\n▶ ${name}`);
+  const steps = [
+    ['create with 1.x', () => run(process.execPath, [oldCli, name, '--yes', ...flags], workDir, { npm_config_user_agent: 'pnpm/10' })],
+    ['commit', () => run('git', ['-c', 'user.name=ci', '-c', 'user.email=ci@example.com', 'add', '-A'], dir)],
+    ['upgrade', () => run(process.execPath, [cli, 'upgrade', '--yes', '--template', template], dir)],
+    ['install', () => run('pnpm', ['install', '--no-frozen-lockfile', '--prefer-offline'], dir)],
+    ['check', () => run(process.execPath, [astro, 'check'], dir)],
+    ['build', () => run(process.execPath, [astro, 'build'], dir, { DEPLOY_TARGET: 'node' })],
+  ];
+
+  let ok = true;
+  for (const [label, exec] of steps) {
+    const r = exec();
+    console.log(`  ${r.ok ? '✓' : '✗'} ${label}`);
+    if (!r.ok) {
+      console.log(r.output.split('\n').slice(-40).join('\n'));
+      ok = false;
+      break;
+    }
+  }
+  results.push({ name, ok });
+}
+
+if (!args.keep) rmSync(workDir, { recursive: true, force: true });
+else console.log(`\nKept: ${workDir}`);
+
+console.log('\nSummary');
+for (const r of results) console.log(`  ${r.ok ? '✓' : '✗'} ${r.name}`);
+process.exit(results.every((r) => r.ok) ? 0 : 1);

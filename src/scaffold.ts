@@ -1,180 +1,20 @@
-import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import * as p from '@clack/prompts';
 import { execa } from 'execa';
-import { downloadTemplate } from 'giget';
-import type { ScaffoldOptions } from './types.js';
-import type { ComponentSelection, ResolvedComponents } from './registry/types.js';
-import { getI18nTemplatePath, getBaseTemplatePath } from './template.js';
+import type { ScaffoldOptions, UpgradeManifest } from './types.js';
 import { getInstallCommand } from './utils/package-manager.js';
 import { initGit } from './utils/git.js';
 import { showSuccess, showWarning } from './prompts.js';
 import { generatePages } from './features/pages.js';
-import { fetchRegistry } from './registry/fetcher.js';
-import { resolveDependencies } from './registry/resolver.js';
 import { createInitialConfig, writeVelocityConfig } from './utils/velocity-config.js';
-import { readJson } from './utils/fs.js';
+import { copyDirectory } from './utils/fs.js';
 import { computeFileHashes } from './utils/diff.js';
+import { applyLockfilePolicy, describeSource, fetchTemplate } from './template-source.js';
+import { checkGates, readManifest, runVariantPipeline } from './variants.js';
 
-// GitHub repository for the Velocity template
-const TEMPLATE_REPO = 'github:southwellmedia/velocity';
-
-// Files/directories to remove after download
-const CLEANUP_ITEMS = [
-  'pnpm-lock.yaml',
-  'package-lock.json',
-  'yarn.lock',
-  'bun.lockb',
-  '.git',
-];
-
-// Demo-specific content to remove when --demo is false
-// Includes both base paths and i18n paths to handle all scenarios
-const DEMO_CONTENT = [
-  // Landing page components
-  'src/components/landing',
-  'src/components/hero',
-  // Landing-specific pages (base paths)
-  'src/pages/index.astro',
-  'src/pages/about.astro',
-  'src/pages/contact.astro',
-  'src/pages/components.astro',
-  // Landing-specific pages (i18n paths)
-  'src/pages/[lang]/index.astro',
-  'src/pages/[lang]/[...about].astro',
-  'src/pages/[lang]/[...contact].astro',
-  'src/pages/[lang]/[...components].astro',
-  // Landing layout (depends on Navbar from landing components)
-  'src/layouts/LandingLayout.astro',
-  // Demo content
-  'src/content/blog',
-  'src/content/faqs',
-  'src/content/authors',
-  'src/content/pages',
-];
-
-// Optional component directories (for removal when mode='none')
-// Note: layout, seo, landing, blog are core template - not optional
-const OPTIONAL_COMPONENT_DIRS = [
-  'src/components/ui',
-  'src/components/patterns',
-  'src/components/hero',
-];
-
-/**
- * Copies template files recursively
- */
-function copyTemplateFiles(src: string, dest: string): void {
-  if (!existsSync(dest)) {
-    mkdirSync(dest, { recursive: true });
-  }
-
-  const entries = readdirSync(src, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const srcPath = join(src, entry.name);
-    const destPath = join(dest, entry.name);
-
-    if (entry.isDirectory()) {
-      copyTemplateFiles(srcPath, destPath);
-    } else {
-      copyFileSync(srcPath, destPath);
-    }
-  }
-}
-
-/**
- * Removes files/directories from the target
- */
-function removeItems(targetDir: string, items: string[]): void {
-  for (const item of items) {
-    const itemPath = join(targetDir, item);
-    if (existsSync(itemPath)) {
-      try {
-        rmSync(itemPath, { recursive: true, force: true });
-      } catch {
-        // Ignore errors - item may not exist or be locked
-      }
-    }
-  }
-}
-
-/**
- * Recursively collects all file paths relative to the project root
- */
-function walkFilesRelative(absDir: string, relativeBase: string): string[] {
-  const results: string[] = [];
-  if (!existsSync(absDir)) return results;
-
-  const entries = readdirSync(absDir, { withFileTypes: true });
-  for (const entry of entries) {
-    const absPath = join(absDir, entry.name);
-    const relPath = `${relativeBase}/${entry.name}`;
-    if (entry.isDirectory()) {
-      results.push(...walkFilesRelative(absPath, relPath));
-    } else {
-      results.push(relPath);
-    }
-  }
-  return results;
-}
-
-/**
- * Recursively removes empty directories bottom-up
- */
-function removeEmptyDirs(dir: string): void {
-  if (!existsSync(dir)) return;
-
-  const entries = readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      removeEmptyDirs(join(dir, entry.name));
-    }
-  }
-
-  // Re-read after cleaning children
-  const remaining = readdirSync(dir);
-  if (remaining.length === 0) {
-    try {
-      rmSync(dir, { recursive: true, force: true });
-    } catch {
-      // Ignore errors
-    }
-  }
-}
-
-/**
- * Keeps only specified files, removes everything else in optional component directories.
- * Walks recursively to handle nested subcategory folders (e.g. ui/form/Button/).
- */
-function keepOnlyFiles(targetDir: string, filesToKeep: Set<string>): void {
-  // Only filter optional component directories - core template dirs are untouched
-  const componentDirs = [
-    'src/components/ui',
-    'src/components/patterns',
-    'src/components/hero',
-  ];
-
-  for (const dir of componentDirs) {
-    const dirPath = join(targetDir, dir);
-    if (!existsSync(dirPath)) continue;
-
-    // Recursively walk all files in the directory
-    const allFiles = walkFilesRelative(dirPath, dir);
-    for (const relativePath of allFiles) {
-      if (!filesToKeep.has(relativePath)) {
-        try {
-          rmSync(join(targetDir, relativePath), { force: true });
-        } catch {
-          // Ignore errors
-        }
-      }
-    }
-
-    // Clean up empty directories (bottom-up)
-    removeEmptyDirs(dirPath);
-  }
-}
+declare const CLI_VERSION: string;
 
 /**
  * Updates the package.json with the new project name
@@ -196,163 +36,117 @@ function updatePackageJson(targetDir: string, projectName: string): void {
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 }
 
-/**
- * Applies base template (minimal pages) when demo is not selected
- */
-function applyBaseTemplate(targetDir: string): void {
-  const baseTemplate = getBaseTemplatePath();
-  if (existsSync(baseTemplate)) {
-    copyTemplateFiles(baseTemplate, targetDir);
-  }
-}
-
-/**
- * Applies the i18n overlay to the project
- */
-function applyI18nOverlay(targetDir: string): void {
-  const i18nTemplate = getI18nTemplatePath();
-  copyTemplateFiles(i18nTemplate, targetDir);
-}
-
-/**
- * Creates empty content directories with .gitkeep files
- */
-function createContentDirectories(targetDir: string): void {
-  const contentDirs = [
-    'src/content/blog',
-  ];
-
-  for (const dir of contentDirs) {
-    const dirPath = join(targetDir, dir);
-    if (!existsSync(dirPath)) {
-      mkdirSync(dirPath, { recursive: true });
-      writeFileSync(join(dirPath, '.gitkeep'), '');
-    }
-  }
-}
-
-/**
- * Applies selective component filtering based on registry resolution
- */
-async function applyComponentSelection(
-  targetDir: string,
-  selection: ComponentSelection
-): Promise<void> {
-  // Handle 'all' mode - keep everything
-  if (selection.mode === 'all') {
-    return;
-  }
-
-  // Handle 'none' mode - remove optional components only
-  if (selection.mode === 'none') {
-    removeItems(targetDir, OPTIONAL_COMPONENT_DIRS);
-    return;
-  }
-
-  // For 'categories' and 'individual' modes, we need the registry
-  let resolved: ResolvedComponents;
+function removeQuietly(path: string): void {
   try {
-    const registry = await fetchRegistry();
-    resolved = resolveDependencies(selection, registry);
+    rmSync(path, { recursive: true, force: true });
   } catch {
-    // If registry fetch fails, fall back to keeping all components
-    console.warn('Could not fetch component registry, keeping all components');
-    return;
-  }
-
-  // Create set of files to keep
-  const filesToKeep = new Set(resolved.files);
-
-  // Keep only the resolved files
-  keepOnlyFiles(targetDir, filesToKeep);
-
-  // Ensure utility files are present if needed
-  if (resolved.utilities.includes('cn')) {
-    const cnPath = join(targetDir, 'src/lib/cn.ts');
-    const cnDir = dirname(cnPath);
-    if (!existsSync(cnDir)) {
-      mkdirSync(cnDir, { recursive: true });
-    }
+    // Ignore cleanup errors
   }
 }
 
 /**
- * Main scaffold function
+ * Main scaffold function.
  *
- * IMPORTANT: Step order matters for option combinations
- * - i18n overlay is applied BEFORE demo removal
- * - This ensures demo=Yes + i18n=Yes gets full translated demo
- * - And demo=No + i18n=Yes gets i18n routing without demo pages
+ * The template is fetched into a staging directory, checked against the
+ * manifest's version gates, transformed by Velocity's own variant pipeline
+ * (variants → component selection → cleanup), and only then copied into the
+ * target directory. The CLI ships no template files of its own.
  */
 export async function scaffold(options: ScaffoldOptions): Promise<void> {
-  const { projectName, targetDir, demo, componentSelection, i18n, pages, pageLayout, packageManager } = options;
+  const {
+    projectName,
+    targetDir,
+    demo,
+    componentSelection,
+    i18n,
+    pages,
+    pageLayout,
+    packageManager,
+    templateSource,
+    install = true,
+  } = options;
   const spinner = p.spinner();
+  const stagingDir = mkdtempSync(join(tmpdir(), 'velocity-scaffold-'));
+  const sourceLabel = describeSource(templateSource);
 
-  // Step 1: Download base template from GitHub
-  spinner.start('Downloading template from GitHub...');
-
+  let manifest: UpgradeManifest | null = null;
   try {
-    await downloadTemplate(TEMPLATE_REPO, {
-      dir: targetDir,
-      force: true,
-    });
-    removeItems(targetDir, CLEANUP_ITEMS);
-    spinner.stop('Template downloaded');
-  } catch (error) {
-    spinner.stop('Failed to download template');
-    throw new Error(
-      `Could not download template from GitHub. Please check your internet connection.\n${error instanceof Error ? error.message : ''}`
+    // Step 1: Fetch the template
+    spinner.start(
+      templateSource.kind === 'local'
+        ? `Copying template from ${templateSource.dir}...`
+        : `Downloading Velocity (${templateSource.ref}) from GitHub...`
     );
-  }
-
-  // Step 2: Apply component selection
-  if (componentSelection.mode !== 'all') {
-    spinner.start('Configuring components...');
     try {
-      await applyComponentSelection(targetDir, componentSelection);
-      spinner.stop('Components configured');
+      await fetchTemplate(templateSource, stagingDir);
+      spinner.stop(`Template fetched (${sourceLabel})`);
     } catch (error) {
-      spinner.stop('Failed to configure components');
+      spinner.stop('Failed to fetch template');
+      throw new Error(
+        templateSource.kind === 'local'
+          ? `Could not copy template from ${templateSource.dir}.\n${error instanceof Error ? error.message : ''}`
+          : `Could not download ${sourceLabel}. Check your internet connection and that the ref exists.\n${error instanceof Error ? error.message : ''}`
+      );
+    }
+
+    // Step 2: Version gates
+    manifest = readManifest<UpgradeManifest>(stagingDir);
+    const { scaffold: scaffoldSection, nodeWarning } = checkGates(manifest, {
+      cliVersion: CLI_VERSION,
+      mode: 'scaffold',
+      sourceLabel,
+    });
+    if (nodeWarning) showWarning(nodeWarning);
+
+    // Step 3: Variants → component selection → cleanup (Velocity's manifest)
+    spinner.start('Applying Velocity variants...');
+    try {
+      const result = runVariantPipeline(stagingDir, scaffoldSection, {
+        options: { demo, i18n },
+        componentSelection,
+      });
+      const parts = [
+        result.appliedVariants.length > 0
+          ? `variants: ${result.appliedVariants.join(', ')}`
+          : 'no variants',
+      ];
+      if (componentSelection.mode !== 'all' && !result.components.pruned) {
+        parts.push('component registry unavailable, kept all components');
+      }
+      spinner.stop(`Template configured (${parts.join('; ')})`);
+    } catch (error) {
+      spinner.stop('Failed to apply variants');
       throw error;
     }
+
+    // Step 4: CLI-level cleanup: VCS data and lockfiles for other package managers
+    removeQuietly(join(stagingDir, '.git'));
+    applyLockfilePolicy(stagingDir, packageManager);
+
+    // Step 5: Move into the target directory
+    copyDirectory(stagingDir, targetDir, true);
+  } finally {
+    removeQuietly(stagingDir);
   }
 
-  // Step 3: Apply i18n overlay if requested (BEFORE demo removal)
-  // This ensures demo=Yes + i18n=Yes gets translated demo pages
-  if (i18n) {
-    spinner.start('Adding i18n support...');
-    try {
-      applyI18nOverlay(targetDir);
-      spinner.stop('i18n support added');
-    } catch (error) {
-      spinner.stop('Failed to add i18n support');
-      throw error;
-    }
-  }
-
-  // Step 4: Remove demo content LAST (handles both base and i18n paths)
-  // This runs after i18n overlay so it can remove i18n demo pages if needed
-  if (!demo) {
-    spinner.start('Configuring minimal template...');
-    removeItems(targetDir, DEMO_CONTENT);
-    applyBaseTemplate(targetDir);
-    createContentDirectories(targetDir);
-    spinner.stop('Minimal template configured');
-  }
-
-  // Step 5: Generate starter pages if requested
+  // Step 6: Generate starter pages if requested
   if (pages.length > 0) {
     spinner.start(`Generating ${pages.length} starter page${pages.length > 1 ? 's' : ''}...`);
     try {
-      const generatedFiles = await generatePages(targetDir, pages, pageLayout, i18n);
-      spinner.stop(`Generated ${generatedFiles.length} page file${generatedFiles.length > 1 ? 's' : ''}`);
+      const result = generatePages(targetDir, pages, pageLayout);
+      spinner.stop(
+        result.generated.length > 0
+          ? `Generated pages: ${result.generated.join(', ')}`
+          : 'No pages generated'
+      );
+      for (const warning of result.warnings) showWarning(warning);
     } catch (error) {
       spinner.stop('Failed to generate pages');
       throw error;
     }
   }
 
-  // Step 6: Update package.json
+  // Step 7: Update package.json
   spinner.start('Configuring project...');
   try {
     updatePackageJson(targetDir, projectName);
@@ -362,36 +156,24 @@ export async function scaffold(options: ScaffoldOptions): Promise<void> {
     throw error;
   }
 
-  // Step 6.5: Write .velocity.json
+  // Step 8: Write .velocity.json (template version + resolved ref + safe-file hashes)
   try {
-    let templateVersion = '0.1.0-beta';
-    const manifestPath = join(targetDir, 'velocity-manifest.json');
-    const pkgPath = join(targetDir, 'package.json');
-
-    if (existsSync(manifestPath)) {
-      const manifest = readJson<{ version?: string }>(manifestPath);
-      if (manifest.version) templateVersion = manifest.version;
-    } else if (existsSync(pkgPath)) {
-      const pkg = readJson<{ version?: string }>(pkgPath);
-      if (pkg.version) templateVersion = pkg.version;
+    let templateVersion = manifest?.version;
+    if (!templateVersion) {
+      const pkg = JSON.parse(readFileSync(join(targetDir, 'package.json'), 'utf-8')) as { version?: string };
+      templateVersion = pkg.version ?? '0.0.0';
     }
 
     const velocityConfig = createInitialConfig(options, templateVersion);
-
-    // Compute file hashes for upgrade conflict detection
-    if (existsSync(manifestPath)) {
-      const manifest = readJson<{ files?: { safe?: string[] } }>(manifestPath);
-      if (manifest.files?.safe) {
-        velocityConfig.fileHashes = computeFileHashes(targetDir, manifest.files.safe);
-      }
+    if (manifest?.files?.safe) {
+      velocityConfig.fileHashes = computeFileHashes(targetDir, manifest.files.safe);
     }
-
     writeVelocityConfig(targetDir, velocityConfig);
   } catch {
     // Non-fatal — project still usable without .velocity.json
   }
 
-  // Step 7: Initialize git
+  // Step 9: Initialize git
   spinner.start('Initializing git repository...');
   const gitInitialized = await initGit(targetDir);
   if (gitInitialized) {
@@ -400,16 +182,18 @@ export async function scaffold(options: ScaffoldOptions): Promise<void> {
     spinner.stop('Git not available, skipping');
   }
 
-  // Step 8: Install dependencies
-  spinner.start(`Installing dependencies with ${packageManager}...`);
-  try {
-    const installCmd = getInstallCommand(packageManager);
-    const [cmd, ...args] = installCmd.split(' ');
-    await execa(cmd!, args, { cwd: targetDir });
-    spinner.stop('Dependencies installed');
-  } catch {
-    spinner.stop('Failed to install dependencies');
-    showWarning(`Run "${getInstallCommand(packageManager)}" manually to install dependencies`);
+  // Step 10: Install dependencies
+  if (install) {
+    spinner.start(`Installing dependencies with ${packageManager}...`);
+    try {
+      const installCmd = getInstallCommand(packageManager);
+      const [cmd, ...args] = installCmd.split(' ');
+      await execa(cmd!, args, { cwd: targetDir });
+      spinner.stop('Dependencies installed');
+    } catch {
+      spinner.stop('Failed to install dependencies');
+      showWarning(`Run "${getInstallCommand(packageManager)}" manually to install dependencies`);
+    }
   }
 
   showSuccess(`Project "${projectName}" created successfully!`);

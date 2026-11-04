@@ -1,0 +1,59 @@
+name: Velocity scaffold smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      velocity_ref:
+        description: Velocity ref (branch, tag or SHA) to test against
+        required: false
+        default: main
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out create-velocity-astro
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install CLI dependencies
+        run: npm ci
+
+      # Run before Velocity is checked out into the workspace, so vitest does
+      # not pick up Velocity's own test files.
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Build CLI
+        run: npm run build
+
+      - name: Check out Velocity
+        uses: actions/checkout@v4
+        with:
+          repository: southwellmedia/velocity
+          ref: ${{ inputs.velocity_ref || 'main' }}
+          path: velocity
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: velocity/package.json
+
+      - name: Scaffold, install and build every combination
+        run: node scripts/smoke.mjs --template velocity
+
+      - name: Upgrade real 1.x projects
+        run: node scripts/upgrade-smoke.mjs --template velocity

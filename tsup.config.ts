@@ -6,7 +6,7 @@ const { version } = JSON.parse(readFileSync('./package.json', 'utf-8'));
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['esm'],
-  target: 'node18',
+  target: 'node20',
   clean: true,
   dts: true,
   splitting: false,

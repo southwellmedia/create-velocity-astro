@@ -30,9 +30,17 @@ export function showChangeSummary(
   // List conflict files first (most important)
   const conflictFiles = diffs.filter((d) => d.status === 'conflict');
   if (conflictFiles.length > 0) {
-    lines.push(pc.bold(pc.yellow('  Conflicts (user-modified files that also changed in template):')));
+    lines.push(pc.bold(pc.yellow('  Files to replace (your versions are backed up):')));
     for (const f of conflictFiles) {
       lines.push(`    ${pc.yellow('⚠')} ${f.path} ${pc.dim('→ backup created, template version applied')}`);
+    }
+  }
+
+  const removedFiles = diffs.filter((d) => d.status === 'removed');
+  if (removedFiles.length > 0) {
+    lines.push(pc.bold(pc.yellow('  Files to remove (your versions are backed up):')));
+    for (const f of removedFiles) {
+      lines.push(`    ${pc.red('-')} ${f.path}`);
     }
   }
 
@@ -57,8 +65,9 @@ export function showChangeSummary(
   const depUpdates = Object.entries(manifest.dependencies.update);
   const depRemoves = manifest.dependencies.remove;
   const depAdds = Object.entries(manifest.dependencies.add);
+  const devDepAdds = Object.entries(manifest.dependencies.addDev ?? {});
 
-  if (depUpdates.length > 0 || depRemoves.length > 0 || depAdds.length > 0) {
+  if (depUpdates.length > 0 || depRemoves.length > 0 || depAdds.length > 0 || devDepAdds.length > 0) {
     lines.push(pc.bold('  Dependency changes:'));
     for (const [name, version] of depUpdates) {
       lines.push(`    ${pc.cyan('~')} ${name} → ${version}`);
@@ -68,6 +77,9 @@ export function showChangeSummary(
     }
     for (const [name, version] of depAdds) {
       lines.push(`    ${pc.green('+')} ${name}@${version}`);
+    }
+    for (const [name, version] of devDepAdds) {
+      lines.push(`    ${pc.green('+')} ${name}@${version} ${pc.dim('(dev)')}`);
     }
   }
 
@@ -119,7 +131,7 @@ export function showConflictNotice(backupDir: string, conflicts: FileDiff[]): vo
   if (conflicts.length === 0) return;
 
   const lines = [
-    pc.yellow(`${conflicts.length} file${conflicts.length !== 1 ? 's were' : ' was'} backed up because you modified ${conflicts.length !== 1 ? 'them' : 'it'}:`),
+    pc.yellow(`${conflicts.length} file${conflicts.length !== 1 ? 's were' : ' was'} replaced or removed, and backed up:`),
     '',
   ];
 
