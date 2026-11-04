@@ -216,7 +216,11 @@ for (const combo of selected) {
   results.push({ name: combo.name, ok: !failed, failedStep: failed?.label });
 
   if (!args.keep && !failed) {
-    rmSync(projectDir, { recursive: true, force: true });
+    try {
+      rmSync(projectDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+    } catch {
+      // Windows can hold a lock briefly after the preview server stops. The OS temp dir clears it.
+    }
   }
 }
 
