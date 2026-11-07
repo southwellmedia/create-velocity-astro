@@ -28,7 +28,16 @@ yarn create velocity-astro my-site
 bun create velocity-astro my-site
 ```
 
-The wizard asks what to include. With npm, put `--` before any flags so they reach the CLI:
+The wizard asks what you're starting, not how to assemble it:
+
+1. **Project name**
+2. **What are you starting?** *My own site* (default), *Explore the Velocity demo*, or *Blank project*
+3. For your own site: **site name**, **what it's for** (one sentence, optional), a **design direction** (*Let my agent choose*, Editorial, Warm local, Clinical, Bold product, Minimal portfolio) and a **brand colour**
+4. **Internationalization** and **package manager**
+
+For your own site the CLI seeds a brief in `.agents/site.md` with exactly what you typed, sets the site name, and applies the direction with the project's own `npm run design` (installing its fonts). Then open the project in your AI coding agent and ask it to **"Set up this site"**: Velocity's `velocity-start-site` skill finishes the brief with you and builds the pages. Design directions and the brief need Velocity 2.5 or later; older `--ref`s get the previous flow.
+
+With npm, put `--` before any flags so they reach the CLI:
 
 ```bash
 npm create velocity-astro@latest my-site -- --demo --i18n
@@ -62,14 +71,19 @@ CLI 2.x works with Velocity 2.0 and later. The 1.x CLI is deprecated and no long
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--demo` | prompt | Include the demo landing, About and Contact pages, component showcase and sample content |
-| `--components` | prompt | Which components to include (see below) |
+| `--start own\|demo\|blank` | prompt (`own` with `-y`) | Your own site (a clean project with a seeded brief), the Velocity demo, or a blank project with no brief |
+| `--demo` | - | Same as `--start demo`: the demo landing, About and Contact pages, component showcase and sample content |
+| `--name "<name>"` | project name, title-cased | Site name, written to `site.config.ts` and the brief |
+| `--describe "<sentence>"` | - | What the site is for, written to the brief |
+| `--direction <id>` | prompt (`auto` with `-y`) | `editorial`, `warm-local`, `clinical`, `bold-product`, `minimal-portfolio`, or `auto` to let your agent choose |
+| `--brand "<hex>"` | the direction's own | Brand colour for the direction |
+| `--components` | all | Which components to include (see below) |
 | `--i18n` | prompt | Enable Spanish and French alongside English |
-| `--pages [names]` | - | Generate starter pages: `--pages "Pricing, Team"`, or `--pages` to be asked |
+| `--pages "<names>"` | - | Generate starter pages, also listed in the brief's sitemap: `--pages "Pricing, Team"` |
 | `--ref <tag\|branch>` | latest release | Velocity version to use |
 | `--template <dir>` | - | Use a local Velocity checkout |
 | `--no-install` | - | Skip installing dependencies |
-| `-y, --yes` | - | Skip prompts: a minimal project with all components, using the package manager you ran the CLI with |
+| `-y, --yes` | - | Skip prompts: your own site, named after the project, direction `auto`, all components, using the package manager you ran the CLI with |
 | `-h, --help` | - | Show help |
 | `-v, --version` | - | Show the version |
 
@@ -86,11 +100,14 @@ Demo projects always keep every component, because the demo pages use them. Comp
 ### Examples
 
 ```bash
-# Minimal starter
-pnpm create velocity-astro@latest my-site -y --components=none
+# A bakery's site, ready for an agent to finish
+pnpm create velocity-astro rosas-bakery -y --name "Rosa's Bakery" --describe "Neighbourhood bakery in Leith" --direction warm-local --brand "#c2410c"
+
+# Blank project, lean
+pnpm create velocity-astro@latest my-site -y --start blank --components=none
 
 # Everything
-pnpm create velocity-astro@latest my-site --demo --components --i18n
+pnpm create velocity-astro@latest my-site --demo --i18n
 
 # With starter pages
 pnpm create velocity-astro@latest my-site -y --pages "Pricing Plans, Team"

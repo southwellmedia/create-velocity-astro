@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { BRIEF_FILE, supportsSiteSetup } from './features/site.js';
 import { execSync } from 'node:child_process';
 import { join, dirname, relative } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -458,7 +459,8 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   showManualSteps(manifest.migrations, matchResults);
 
   // 10. Show outro
-  showUpgradeOutro(hasDepChanges);
+  // Projects reaching Velocity 2.5 without a brief get the new site setup suggested once.
+  showUpgradeOutro(hasDepChanges, supportsSiteSetup(manifest.version) && !existsSync(join(targetDir, BRIEF_FILE)));
 
   cleanup(tempDir);
 }
