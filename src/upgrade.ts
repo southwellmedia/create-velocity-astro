@@ -6,6 +6,7 @@ import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import type { UpgradeOptions, UpgradeManifest, MigrationStep } from './types.js';
 import { readVelocityConfig, writeVelocityConfig } from './utils/velocity-config.js';
+import { writeBaseline } from './utils/baseline.js';
 import { diffProjects, diffStructural, summarizeDiffs, computeFileHashes } from './utils/diff.js';
 import { applyDependencyChanges, applyPackageJsonChanges, hasDependencyChanges } from './utils/dependencies.js';
 import type { PackageJson } from './utils/dependencies.js';
@@ -344,6 +345,7 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
         updatedAt: new Date().toISOString().slice(0, 10),
         template: sourceRecord(templateSource),
       });
+      refreshBaseline(targetDir, manifest);
     }
     p.outro('');
     cleanup(tempDir);
@@ -424,6 +426,10 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
 
   spinner.stop('Changes applied');
 
+  // 6f. Rewrite .velocity/baseline.json so check:agent measures later edits
+  // from the upgraded files, not the ones they replaced.
+  const baselineWritten = refreshBaseline(targetDir, manifest);
+
   // Report results
   if (modified > 0) {
     p.log.success(pc.green(`Updated ${modified} framework file${modified !== 1 ? 's' : ''}`));
@@ -435,6 +441,9 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     p.log.success(pc.green('Updated package.json dependencies'));
   }
   p.log.success(pc.green('Updated .velocity.json'));
+  if (baselineWritten) {
+    p.log.success(pc.green('Updated .velocity/baseline.json'));
+  }
 
   // 7. Show conflict notice (before protected notice, as it's more urgent)
   if (backupDiffs.length > 0) {
@@ -452,6 +461,24 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   showUpgradeOutro(hasDepChanges);
 
   cleanup(tempDir);
+}
+
+/**
+ * Rewrites .velocity/baseline.json from the project's current Velocity-owned
+ * files. Non-fatal: check:agent only skips its ownership rule without it.
+ */
+function refreshBaseline(targetDir: string, manifest: UpgradeManifest): boolean {
+  try {
+    return writeBaseline(targetDir, manifest) !== null;
+  } catch (error) {
+    p.log.warn(
+      pc.yellow(
+        `Could not write .velocity/baseline.json (${error instanceof Error ? error.message : String(error)}). ` +
+          'Run "npm run check:agent -- --write-baseline" to create it.'
+      )
+    );
+    return false;
+  }
 }
 
 /**

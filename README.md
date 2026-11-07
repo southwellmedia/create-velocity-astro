@@ -116,7 +116,7 @@ pnpm install
 
 `upgrade` also accepts `--yes`, `--ref` and `--template`. It:
 
-1. **Updates Velocity's files**, such as components, layouts and utilities. If you edited one, your version is saved to `.velocity-backup/` first.
+1. **Updates Velocity's files**, such as components, layouts and utilities. If you edited one, your version is saved to `.velocity-backup/` first. Then it rewrites `.velocity/baseline.json`, so `check:agent` warns when one of them is edited later.
 2. **Updates dependencies** and `package.json` scripts, keeping scripts you customized.
 3. **Leaves your files alone**, including your pages, content and site config. A release can add new files alongside them.
 4. **Lists manual steps**, with the files each one affects.
@@ -128,6 +128,8 @@ Upgrading from 1.x? Follow the [v1 to v2 guide](https://docs.deployvelocity.com/
 ## How It Works
 
 The CLI ships no template files. It downloads a Velocity release from GitHub and applies the `scaffold` section of that release's `velocity-manifest.json`, so a project always matches the version it came from. Velocity's CI builds every project shape the CLI can create.
+
+New projects get a `.velocity/baseline.json` with the hash of every file Velocity owns, for the project's `check:agent` (skipped when the manifest sets `scaffold.baseline: false`).
 
 The format is documented in [`variants/README.md`](https://github.com/southwellmedia/velocity/blob/main/variants/README.md).
 

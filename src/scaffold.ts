@@ -11,6 +11,7 @@ import { generatePages } from './features/pages.js';
 import { createInitialConfig, writeVelocityConfig } from './utils/velocity-config.js';
 import { copyDirectory } from './utils/fs.js';
 import { computeFileHashes } from './utils/diff.js';
+import { writeBaseline } from './utils/baseline.js';
 import { applyLockfilePolicy, describeSource, fetchTemplate } from './template-source.js';
 import { checkGates, readManifest, runVariantPipeline } from './variants.js';
 
@@ -171,6 +172,18 @@ export async function scaffold(options: ScaffoldOptions): Promise<void> {
     writeVelocityConfig(targetDir, velocityConfig);
   } catch {
     // Non-fatal — project still usable without .velocity.json
+  }
+
+  // Step 8b: Record Velocity-owned files as shipped (.velocity/baseline.json),
+  // so check:agent can spot later edits. Written before git init so it lands in
+  // the initial commit.
+  try {
+    writeBaseline(targetDir, manifest);
+  } catch (error) {
+    showWarning(
+      `Could not write .velocity/baseline.json (${error instanceof Error ? error.message : String(error)}). ` +
+        'Run "npm run check:agent -- --write-baseline" to create it.'
+    );
   }
 
   // Step 9: Initialize git
