@@ -6,13 +6,21 @@ import pc from 'picocolors';
 import type { CliOptions } from './types.js';
 import type { ComponentSelection } from './registry/types.js';
 import { runPrompts, showIntro, showOutro, showError, showWarning } from './prompts.js';
-import { scaffold } from './scaffold.js';
+import { scaffold, type ScaffoldResult } from './scaffold.js';
 import { upgrade } from './upgrade.js';
 import { isEmptyDir } from './utils/fs.js';
 import { toValidProjectName } from './utils/validate.js';
 import { resolveTemplateSource } from './template-source.js';
 import { parsePageNames } from './features/pages.js';
 import { detectPackageManager } from './utils/package-manager.js';
+import {
+  DIRECTIONS,
+  fetchTemplateVersion,
+  parseSiteFlags,
+  supportsSiteSetup,
+  titleCase,
+  type SiteOptions,
+} from './features/site.js';
 import type { TemplateSource } from './template-source.js';
 
 declare const CLI_VERSION: string;
@@ -32,13 +40,21 @@ ${pc.bold('Commands:')}
     --template <dir>    Upgrade from a local Velocity checkout
 
 ${pc.bold('Options:')}
-  --demo              Include demo landing page and sample content
-  --components        Include all components (default: prompt for selection)
+  --start own|demo|blank  What you're starting (default: own)
+                      own    a clean project your AI agent builds into your site
+                      demo   the Velocity demo with every component
+                      blank  a clean project with no site brief
+  --demo              Same as --start demo
+  --name "Rosa's Bakery"  Site name (default: the project name, title-cased)
+  --describe "…"      One sentence on what the site is for
+  --direction <id>    Design direction: ${DIRECTIONS.map((d) => d.id).join(', ')}, or auto
+                      (default: auto, your agent chooses)
+  --brand "#c2410c"   Brand colour for the direction
+  --components        Include all components (the default)
   --components=none   Exclude optional components (core pages keep what they need)
   --components=ui,patterns  Include specific categories
   --i18n              Add internationalization support
-  --pages             Prompt for starter pages to generate
-  --pages="Pricing, Team"  Generate these starter pages (no prompt)
+  --pages="Pricing, Team"  Generate these starter pages and plan them in the brief
   --ref <tag|branch>  Velocity tag or branch to scaffold from
                       (default: latest GitHub release, falling back to main)
   --template <dir>    Scaffold from a local Velocity checkout instead of GitHub
@@ -57,7 +73,8 @@ ${pc.bold('Requirements:')}
 
 ${pc.bold('Examples:')}
   npm create velocity-astro@latest my-site
-  npm create velocity-astro@latest my-site -- --demo --components
+  npm create velocity-astro@latest my-site -- --demo
+  pnpm create velocity-astro rosas-bakery -y --name "Rosa's Bakery" --describe "Neighbourhood bakery in Leith" --direction warm-local --brand "#c2410c"
   npm create velocity-astro@latest my-site -- --components=ui,patterns
   npm create velocity-astro@latest my-site -- --ref v2.0.0
   pnpm create velocity-astro my-site -y --template ../velocity
@@ -115,7 +132,7 @@ function parseComponentsFlag(value: string | boolean | undefined): ComponentSele
 export async function run(argv: string[]): Promise<void> {
   const args = mri<CliOptions>(argv, {
     boolean: ['demo', 'i18n', 'help', 'version', 'yes', 'dry-run', 'install'],
-    string: ['components', 'ref', 'template', 'pages'],
+    string: ['components', 'ref', 'template', 'pages', 'start', 'name', 'describe', 'direction', 'brand'],
     alias: {
       h: 'help',
       v: 'version',
@@ -172,6 +189,15 @@ export async function run(argv: string[]): Promise<void> {
   }
   const install = args.install !== false;
 
+  const siteFlags = parseSiteFlags(args);
+  if (siteFlags.error) {
+    showError(siteFlags.error);
+    process.exit(1);
+  }
+  // The brief, site name and design prompts need a Velocity 2.5+ template; older refs get the previous flow.
+  const templateVersion = await fetchTemplateVersion(templateSource);
+  const siteSetup = supportsSiteSetup(templateVersion);
+
   // --pages            → prompt for page names
   // --pages "A, B"     → generate these pages
   const pagesFlag = typeof args.pages === 'string' ? args.pages : undefined;
@@ -194,12 +220,25 @@ export async function run(argv: string[]): Promise<void> {
     }
 
     const packageManager = detectPackageManager();
+    const start = siteFlags.options.start ?? 'own';
+    const site: SiteOptions = {
+      start,
+      ...(start === 'own'
+        ? {
+            name: siteFlags.options.name ?? titleCase(projectName),
+            direction: siteFlags.options.direction ?? 'auto',
+            ...(siteFlags.options.describe ? { describe: siteFlags.options.describe } : {}),
+            ...(siteFlags.options.brand ? { brand: siteFlags.options.brand } : {}),
+          }
+        : {}),
+    };
 
+    let result: ScaffoldResult = {};
     try {
-      await scaffold({
+      result = await scaffold({
         projectName,
         targetDir,
-        demo: args.demo || false,
+        demo: start === 'demo',
         componentSelection: componentSelection || { mode: 'all' },
         i18n: args.i18n || false,
         pages: pageNames,
@@ -207,25 +246,25 @@ export async function run(argv: string[]): Promise<void> {
         packageManager,
         templateSource,
         install,
+        site,
       });
     } catch (error) {
       showError(error instanceof Error ? error.message : 'An unexpected error occurred');
       process.exit(1);
     }
 
-    showOutro(projectName, packageManager);
+    showOutro(projectName, packageManager, outroContext(site, siteSetup, install, result));
     return;
   }
 
   // Interactive mode
   const answers = await runPrompts({
     projectName: argProjectName,
-    demo: args.demo,
+    ...siteFlags.options,
     componentSelection: componentSelection,
-    i18n: args.i18n,
-    pages: pagesFlag !== undefined ? true : undefined,
+    i18n: args.i18n ? true : undefined,
     pageNames,
-    templateSource,
+    siteSetup,
   });
 
   // User cancelled
@@ -233,7 +272,7 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
-  const { projectName, demo, componentSelection: selectedComponents, i18n, pages, pageLayout, packageManager } = answers;
+  const { projectName, site, demo, componentSelection: selectedComponents, i18n, pages, pageLayout, packageManager } = answers;
   const targetDir = resolve(process.cwd(), projectName);
 
   // Check if directory exists and is not empty
@@ -251,7 +290,7 @@ export async function run(argv: string[]): Promise<void> {
 
   // Run scaffold
   try {
-    await scaffold({
+    const result = await scaffold({
       projectName,
       targetDir,
       demo,
@@ -262,11 +301,18 @@ export async function run(argv: string[]): Promise<void> {
       packageManager,
       templateSource,
       install,
+      site,
     });
 
-    showOutro(projectName, packageManager);
+    showOutro(projectName, packageManager, outroContext(site, siteSetup, install, result));
   } catch (error) {
     showError(error instanceof Error ? error.message : 'An unexpected error occurred');
     process.exit(1);
   }
+}
+
+/** What the outro needs to say about the site setup. */
+function outroContext(site: SiteOptions, siteSetup: boolean, install: boolean, result: ScaffoldResult) {
+  // A direction that couldn't be applied (no install, or the design script failed) comes with its command.
+  return { site, siteSetup, installed: install, designCommand: result.designPending };
 }

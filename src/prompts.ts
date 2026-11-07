@@ -1,216 +1,44 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
-import type { PackageManager, PageLayout, PromptAnswers } from './types.js';
-import type { ComponentSelection, ComponentRegistry, ComponentSelectionMode } from './registry/types.js';
+import type { PackageManager, PromptAnswers } from './types.js';
+import type { ComponentSelection } from './registry/types.js';
 import { validateProjectName, toValidProjectName } from './utils/validate.js';
-import { detectPackageManager } from './utils/package-manager.js';
-import { fetchRegistry } from './registry/fetcher.js';
-import { getComponentsByCategory, resolveDependencies, getSelectionStats } from './registry/resolver.js';
-import type { TemplateSource } from './template-source.js';
-import { parsePageNames } from './features/pages.js';
+import { detectPackageManager, getInstallCommand } from './utils/package-manager.js';
+import {
+  DIRECTIONS,
+  normalizeHex,
+  titleCase,
+  type DirectionChoice,
+  type SiteOptions,
+  type StartMode,
+} from './features/site.js';
 
 interface PromptDefaults {
   projectName?: string;
-  demo?: boolean;
+  /** From --start (or --demo) */
+  start?: StartMode;
+  name?: string;
+  describe?: string;
+  direction?: DirectionChoice;
+  brand?: string;
   componentSelection?: ComponentSelection;
   i18n?: boolean;
-  pages?: boolean;
-  /** Page names given on the command line (skips the page prompts) */
+  /** Page names given on the command line */
   pageNames?: string[];
-  /** Template the registry is read from, so prompts list the components being scaffolded */
-  templateSource?: TemplateSource;
+  /** Whether the template supports the brief and design directions (Velocity 2.5+) */
+  siteSetup?: boolean;
+}
+
+function cancel(): never {
+  p.cancel('Operation cancelled.');
+  process.exit(0);
 }
 
 /**
- * Prompts user for component selection mode
+ * Interactive flow: what the site is, not how to assemble it. Component selection and
+ * starter pages left the prompts (their flags still work): agents build sections from
+ * primitives, and unused primitives cost nothing at build.
  */
-async function promptComponentMode(): Promise<ComponentSelectionMode> {
-  const result = await p.select({
-    message: 'Include optional components?',
-    options: [
-      {
-        value: 'all' as ComponentSelectionMode,
-        label: 'All',
-        hint: 'Include every optional component',
-      },
-      {
-        value: 'categories' as ComponentSelectionMode,
-        label: 'Select categories',
-        hint: 'Choose component groups',
-      },
-      {
-        value: 'individual' as ComponentSelectionMode,
-        label: 'Select individual',
-        hint: 'Pick specific components',
-      },
-      {
-        value: 'none' as ComponentSelectionMode,
-        label: 'None',
-        hint: 'Only the components core pages need',
-      },
-    ],
-    initialValue: 'all' as ComponentSelectionMode,
-  });
-
-  if (p.isCancel(result)) {
-    p.cancel('Operation cancelled.');
-    process.exit(0);
-  }
-
-  return result;
-}
-
-/**
- * Prompts user to select component categories
- */
-async function promptCategories(registry: ComponentRegistry): Promise<string[]> {
-  const categoryOptions = Object.entries(registry.categories).map(([id, cat]) => {
-    const componentCount = getComponentsByCategory(id, registry).length;
-    return {
-      value: id,
-      label: cat.name,
-      hint: `${componentCount} components - ${cat.description}`,
-    };
-  });
-
-  const result = await p.multiselect({
-    message: 'Select component categories:',
-    options: categoryOptions,
-    required: true,
-  });
-
-  if (p.isCancel(result)) {
-    p.cancel('Operation cancelled.');
-    process.exit(0);
-  }
-
-  return result as string[];
-}
-
-/**
- * Prompts user to select individual components
- */
-async function promptComponents(registry: ComponentRegistry): Promise<string[]> {
-  // Group components by category for better UX
-  const componentsByCategory: Record<string, { value: string; label: string; hint: string }[]> = {};
-
-  for (const [id, comp] of Object.entries(registry.components)) {
-    if (!componentsByCategory[comp.category]) {
-      componentsByCategory[comp.category] = [];
-    }
-    const depCount = comp.dependencies.components.length;
-    const depHint = depCount > 0 ? ` (requires ${depCount} dep${depCount > 1 ? 's' : ''})` : '';
-    const categoryName = registry.categories[comp.category]?.name ?? comp.category;
-    componentsByCategory[comp.category]!.push({
-      value: id,
-      label: comp.name,
-      hint: `${categoryName}${depHint}`,
-    });
-  }
-
-  // Flatten into options with category headers
-  const options: { value: string; label: string; hint?: string }[] = [];
-  for (const [categoryId, components] of Object.entries(componentsByCategory)) {
-    const categoryName = registry.categories[categoryId]?.name || categoryId;
-    // Add all components from this category
-    for (const comp of components) {
-      options.push({
-        ...comp,
-        hint: categoryName,
-      });
-    }
-  }
-
-  const result = await p.multiselect({
-    message: 'Select components (dependencies auto-included):',
-    options,
-    required: true,
-  });
-
-  if (p.isCancel(result)) {
-    p.cancel('Operation cancelled.');
-    process.exit(0);
-  }
-
-  return result as string[];
-}
-
-/**
- * Gets component selection from user prompts
- */
-async function getComponentSelection(
-  defaultSelection?: ComponentSelection,
-  templateSource?: TemplateSource
-): Promise<ComponentSelection> {
-  if (defaultSelection) {
-    return defaultSelection;
-  }
-
-  let registry: ComponentRegistry;
-  try {
-    registry = await fetchRegistry(templateSource);
-  } catch {
-    // Fallback to simple yes/no if registry unavailable
-    const useComponents = await p.select({
-      message: 'Include UI component library?',
-      options: [
-        { value: true, label: 'Yes', hint: 'Buttons, forms, cards, dialogs, etc.' },
-        { value: false, label: 'No', hint: 'Just the basics' },
-      ],
-      initialValue: true,
-    });
-
-    if (p.isCancel(useComponents)) {
-      p.cancel('Operation cancelled.');
-      process.exit(0);
-    }
-
-    return { mode: useComponents ? 'all' : 'none' };
-  }
-
-  const mode = await promptComponentMode();
-
-  switch (mode) {
-    case 'none':
-      return { mode: 'none' };
-
-    case 'all':
-      return { mode: 'all' };
-
-    case 'categories': {
-      const categories = await promptCategories(registry);
-      // Show what will be included
-      const selection: ComponentSelection = { mode: 'categories', categories };
-      const resolved = resolveDependencies(selection, registry);
-      const stats = getSelectionStats(resolved, registry);
-      p.log.info(
-        pc.dim(`Selected ${stats.componentCount} components (${resolved.files.length} files)`)
-      );
-      return selection;
-    }
-
-    case 'individual': {
-      const components = await promptComponents(registry);
-      // Show what will be included (with dependencies)
-      const selection: ComponentSelection = { mode: 'individual', components };
-      const resolved = resolveDependencies(selection, registry);
-      const stats = getSelectionStats(resolved, registry);
-      if (resolved.components.length > components.length) {
-        p.log.info(
-          pc.dim(
-            `Selected ${components.length} components + ${resolved.components.length - components.length} dependencies (${resolved.files.length} files)`
-          )
-        );
-      } else {
-        p.log.info(
-          pc.dim(`Selected ${stats.componentCount} components (${resolved.files.length} files)`)
-        );
-      }
-      return selection;
-    }
-  }
-}
-
 export async function runPrompts(defaults: PromptDefaults = {}): Promise<PromptAnswers | symbol> {
   const detectedPm = detectPackageManager();
 
@@ -228,154 +56,109 @@ export async function runPrompts(defaults: PromptDefaults = {}): Promise<PromptA
           },
         }),
 
-      demo:
-        defaults.demo !== undefined
-          ? () => Promise.resolve(defaults.demo)
-          : () =>
-              p.select({
-                message: 'Include demo landing page and sample content?',
-                options: [
-                  {
-                    value: false,
-                    label: 'No',
-                    hint: 'Minimal starter with basic pages',
-                  },
-                  {
-                    value: true,
-                    label: 'Yes',
-                    hint: 'Full demo with landing page, blog posts',
-                  },
-                ],
-                initialValue: false,
-              }),
+      start: () =>
+        defaults.start !== undefined
+          ? Promise.resolve(defaults.start)
+          : p.select({
+              message: 'What are you starting?',
+              options: [
+                { value: 'own' as StartMode, label: 'My own site', hint: 'A clean project your AI agent builds into your site' },
+                { value: 'demo' as StartMode, label: 'Explore the Velocity demo', hint: 'Every component and sample pages' },
+                { value: 'blank' as StartMode, label: 'Blank project', hint: 'Build it by hand, no agent setup' },
+              ],
+              initialValue: 'own' as StartMode,
+            }),
 
-      componentSelection: () => getComponentSelection(defaults.componentSelection, defaults.templateSource),
+      name: ({ results }) => {
+        const projectName = toValidProjectName(results.projectName || defaults.projectName || 'my-velocity-site');
+        if (results.start !== 'own' || !defaults.siteSetup) return Promise.resolve(undefined);
+        if (defaults.name) return Promise.resolve(defaults.name);
+        return p.text({
+          message: 'Site name?',
+          placeholder: titleCase(projectName),
+          defaultValue: titleCase(projectName),
+        });
+      },
 
-      i18n:
+      describe: ({ results }) => {
+        if (results.start !== 'own' || !defaults.siteSetup) return Promise.resolve(undefined);
+        if (defaults.describe !== undefined) return Promise.resolve(defaults.describe);
+        return p.text({
+          message: "What's the site for? One sentence, or Enter to skip",
+          placeholder: 'A neighbourhood bakery in Leith with a wood-fired oven',
+          defaultValue: '',
+        });
+      },
+
+      direction: ({ results }) => {
+        if (results.start !== 'own' || !defaults.siteSetup) return Promise.resolve(undefined);
+        if (defaults.direction) return Promise.resolve(defaults.direction);
+        return p.select({
+          message: 'Design direction?',
+          options: [
+            { value: 'auto' as DirectionChoice, label: 'Let my agent choose', hint: 'From what the site is for' },
+            ...DIRECTIONS.map((d) => ({ value: d.id as DirectionChoice, label: d.label, hint: d.hint })),
+          ],
+          initialValue: 'auto' as DirectionChoice,
+        });
+      },
+
+      brand: ({ results }) => {
+        if (!results.direction || results.direction === 'auto') return Promise.resolve(undefined);
+        if (defaults.brand) return Promise.resolve(defaults.brand);
+        return p.text({
+          message: 'Brand colour? Hex, or Enter for the direction’s own',
+          placeholder: '#c2410c',
+          defaultValue: '',
+          validate: (value) => (value && !normalizeHex(value) ? 'Enter a hex colour such as #c2410c, or leave it empty' : undefined),
+        });
+      },
+
+      i18n: () =>
         defaults.i18n !== undefined
-          ? () => Promise.resolve(defaults.i18n)
-          : () =>
-              p.select({
-                message: 'Add internationalization (i18n)?',
-                options: [
-                  {
-                    value: false,
-                    label: 'No',
-                    hint: 'English only',
-                  },
-                  {
-                    value: true,
-                    label: 'Yes',
-                    hint: 'Locale routing, translations',
-                  },
-                ],
-                initialValue: false,
-              }),
-
-      generatePages:
-        defaults.pageNames && defaults.pageNames.length > 0
-          ? () => Promise.resolve(true)
-          : defaults.pages !== undefined
-          ? () => Promise.resolve(defaults.pages)
-          : () =>
-              p.select({
-                message: 'Generate starter pages?',
-                options: [
-                  {
-                    value: false,
-                    label: 'No',
-                    hint: 'Create pages manually later',
-                  },
-                  {
-                    value: true,
-                    label: 'Yes',
-                    hint: 'Auto-generate page files with layout',
-                  },
-                ],
-                initialValue: false,
-              }),
-
-      pageNames: ({ results }) =>
-        defaults.pageNames && defaults.pageNames.length > 0
-          ? Promise.resolve(defaults.pageNames.join(', '))
-          : results.generatePages
-          ? p.text({
-              message: 'Enter page names (comma-separated):',
-              placeholder: 'Pricing, Team, FAQ',
-              validate: (value) => {
-                const pages = parsePageNames(value);
-                if (pages.length === 0) {
-                  return 'Please enter at least one valid page name';
-                }
-              },
-            })
-          : Promise.resolve(''),
-
-      pageLayout: ({ results }) =>
-        results.generatePages
-          ? results.demo
-            ? p.select({
-                message: 'Select layout for pages:',
-                options: [
-                  {
-                    value: 'page' as PageLayout,
-                    label: 'PageLayout',
-                    hint: 'Standard content pages (Header + Footer)',
-                  },
-                  {
-                    value: 'landing' as PageLayout,
-                    label: 'LandingLayout',
-                    hint: 'Marketing pages (Header + Footer, landing styling)',
-                  },
-                ],
-                initialValue: 'page' as PageLayout,
-              })
-            : Promise.resolve('page' as PageLayout) // Force PageLayout when demo=No
-          : Promise.resolve('page' as PageLayout),
+          ? Promise.resolve(defaults.i18n)
+          : p.select({
+              message: 'Add internationalization (i18n)?',
+              options: [
+                { value: false, label: 'No', hint: 'English only' },
+                { value: true, label: 'Yes', hint: 'Locale routing, translations' },
+              ],
+              initialValue: false,
+            }),
 
       packageManager: () =>
         p.select({
           message: 'Which package manager?',
-          options: [
-            {
-              value: 'pnpm' as PackageManager,
-              label: 'pnpm',
-              hint: detectedPm === 'pnpm' ? 'detected' : 'recommended',
-            },
-            {
-              value: 'npm' as PackageManager,
-              label: 'npm',
-              hint: detectedPm === 'npm' ? 'detected' : undefined,
-            },
-            {
-              value: 'yarn' as PackageManager,
-              label: 'yarn',
-              hint: detectedPm === 'yarn' ? 'detected' : undefined,
-            },
-            {
-              value: 'bun' as PackageManager,
-              label: 'bun',
-              hint: detectedPm === 'bun' ? 'detected' : undefined,
-            },
-          ],
+          options: (['pnpm', 'npm', 'yarn', 'bun'] as PackageManager[]).map((pm) => ({
+            value: pm,
+            label: pm,
+            hint: detectedPm === pm ? 'detected' : pm === 'pnpm' ? 'recommended' : undefined,
+          })),
           initialValue: detectedPm,
         }),
     },
-    {
-      onCancel: () => {
-        p.cancel('Operation cancelled.');
-        process.exit(0);
-      },
-    }
+    { onCancel: cancel }
   );
+
+  const start = (answers.start as StartMode) ?? 'own';
+  const describe = typeof answers.describe === 'string' && answers.describe.trim() ? answers.describe.trim() : undefined;
+  const brand = normalizeHex(typeof answers.brand === 'string' ? answers.brand : undefined);
+  const site: SiteOptions = {
+    start,
+    ...(answers.name ? { name: String(answers.name).trim() } : {}),
+    ...(describe ? { describe } : {}),
+    ...(answers.direction ? { direction: answers.direction as DirectionChoice } : {}),
+    ...(brand ? { brand } : {}),
+  };
 
   return {
     projectName: toValidProjectName(answers.projectName || defaults.projectName || 'my-velocity-site'),
-    demo: answers.demo as boolean,
-    componentSelection: answers.componentSelection as ComponentSelection,
+    site,
+    demo: start === 'demo',
+    componentSelection: defaults.componentSelection ?? { mode: 'all' },
     i18n: answers.i18n as boolean,
-    pages: parsePageNames(answers.pageNames as string),
-    pageLayout: (answers.pageLayout as PageLayout) || 'page',
+    pages: defaults.pageNames ?? [],
+    pageLayout: 'page',
     packageManager: answers.packageManager as PackageManager,
   };
 }
@@ -385,17 +168,39 @@ export function showIntro(): void {
   p.intro(pc.bgCyan(pc.black(' Create Velocity ')));
 }
 
-export function showOutro(projectName: string, packageManager: PackageManager): void {
+export interface OutroContext {
+  site?: SiteOptions;
+  /** The template supports the brief and design directions (Velocity 2.5+) */
+  siteSetup?: boolean;
+  /** Dependencies were installed, so a chosen direction was applied */
+  installed?: boolean;
+  /** Command to apply the direction when it couldn't be applied during scaffolding */
+  designCommand?: string;
+}
+
+export function showOutro(projectName: string, packageManager: PackageManager, context: OutroContext = {}): void {
   const runCmd = packageManager === 'npm' ? 'npm run' : packageManager;
+  const { site, siteSetup } = context;
+  const steps = [`cd ${projectName}`];
+  if (context.installed === false) steps.push(getInstallCommand(packageManager));
+  steps.push(`${runCmd} dev`);
 
-  p.note(
-    [
-      `cd ${projectName}`,
-      `${runCmd} dev`,
-    ].join('\n'),
-    'Next steps'
-  );
+  const lines = [...steps];
+  if (site?.start === 'own' && siteSetup) {
+    lines.push('', `Then ask your AI agent: ${pc.cyan('"Set up this site"')}`, 'It reads .agents/site.md and finishes the brief with you.');
+    const direction = DIRECTIONS.find((d) => d.id === site.direction);
+    if (direction && context.designCommand) {
+      lines.push(`Design: ${direction.label} · apply it with \`${context.designCommand}\``);
+    } else if (direction) {
+      lines.push(`Design: ${direction.label} · run \`${packageManager === 'npm' ? 'npm run design --' : `${packageManager} run design`} tokens\` to inspect it`);
+    } else {
+      lines.push('Design: your agent picks one of five directions with you.');
+    }
+  } else if (site?.start === 'demo' && siteSetup) {
+    lines.push('', `When you're ready, ask your AI agent: ${pc.cyan('"Replace the demo with my site"')}`);
+  }
 
+  p.note(lines.join('\n'), 'Next steps');
   p.outro(pc.green('Happy building!'));
 }
 

@@ -1,6 +1,7 @@
 import type { ComponentSelection } from './registry/types.js';
 import type { TemplateSource } from './template-source.js';
 import type { ScaffoldSection } from './variants.js';
+import type { SiteOptions, StartMode, DirectionChoice } from './features/site.js';
 
 export interface CliOptions {
   projectName?: string;
@@ -14,6 +15,11 @@ export interface CliOptions {
   ref?: string;
   template?: string;
   install?: boolean;
+  start?: string;
+  name?: string;
+  describe?: string;
+  direction?: string;
+  brand?: string;
 }
 
 export type PageLayout = 'page' | 'landing';
@@ -31,12 +37,15 @@ export interface ScaffoldOptions {
   templateSource: TemplateSource;
   /** Install dependencies after scaffolding (default true) */
   install?: boolean;
+  /** What the project is for: seeds .agents/site.md and applies a design direction (Velocity 2.5+) */
+  site?: SiteOptions;
 }
 
 export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
 
 export interface PromptAnswers {
   projectName: string;
+  site: SiteOptions;
   demo: boolean;
   componentSelection: ComponentSelection;
   i18n: boolean;
@@ -53,6 +62,10 @@ export interface VelocityConfig {
     demo: boolean;
     i18n: boolean;
     components: string;
+    /** What the user chose to start: their own site, the demo, or a blank project */
+    start?: StartMode;
+    /** Design direction chosen at creation, or 'auto' for the agent to choose */
+    direction?: DirectionChoice;
   };
   /** Template the project was created from / last upgraded to */
   template?: { source: 'github'; ref: string } | { source: 'local'; path: string };

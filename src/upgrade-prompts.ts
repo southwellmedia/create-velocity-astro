@@ -206,9 +206,18 @@ export function showManualSteps(
 /**
  * Shows the upgrade completion message.
  */
-export function showUpgradeOutro(hasDepChanges: boolean): void {
+export function showUpgradeOutro(hasDepChanges: boolean, newSiteSetup = false): void {
   if (hasDepChanges) {
     p.log.info(`Run ${pc.cyan('pnpm install')} to update dependencies.`);
+  }
+  if (newSiteSetup) {
+    p.log.info(
+      [
+        'New: design directions and a site setup skill.',
+        `Ask your AI agent to ${pc.cyan('"set up the design for this site"')}: it keeps your pages and records a brief in .agents/site.md.`,
+        `Or browse the directions with ${pc.cyan('npm run design -- direction --list')}.`,
+      ].join('\n')
+    );
   }
   p.outro(pc.green('Upgrade complete! Review the manual steps above.'));
 }
