@@ -41,6 +41,8 @@ export interface ScaffoldSection {
   cleanup?: string[];
   /** npm script names removed from the project's package.json after cleanup */
   cleanupScripts?: string[];
+  /** `false` skips writing .velocity/baseline.json (contract step 5); anything else writes it */
+  baseline?: boolean;
 }
 
 /** Scaffold options that variant `when` clauses may match against. */
