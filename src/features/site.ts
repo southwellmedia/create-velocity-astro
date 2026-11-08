@@ -63,7 +63,7 @@ export function titleCase(projectName: string): string {
 
 /**
  * Validate the site flags. Returns the options, an error naming a bad flag, and any flags
- * that are no longer used (--direction and --brand, from CLI 2.2). `--demo` is an alias for
+ * that are no longer supported (--direction, --brand). `--demo` is an alias for
  * `--start demo`.
  */
 export function parseSiteFlags(

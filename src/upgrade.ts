@@ -520,7 +520,7 @@ function normalizeManifest(manifest: UpgradeManifest): UpgradeManifest {
 
 /**
  * After files are removed, delete the folders they leave empty (deepest first), stopping at
- * the project root, so a removed directory such as .agents/design/ doesn't linger.
+ * the project root, so a removed directory doesn't linger.
  */
 export function removeEmptyParents(root: string, removed: string[]): void {
   const dirs = new Set<string>();

@@ -38,7 +38,7 @@ export interface ScaffoldOptions {
   templateSource: TemplateSource;
   /** Install dependencies after scaffolding (default true) */
   install?: boolean;
-  /** What the project is for: seeds .agents/site.md and applies a design direction (Velocity 2.5+) */
+  /** What the project is for: seeds .agents/site.md (Velocity 2.5+) */
   site?: SiteOptions;
 }
 

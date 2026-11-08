@@ -187,7 +187,7 @@ export async function run(argv: string[]): Promise<void> {
 
   const siteFlags = parseSiteFlags(args);
   if (siteFlags.ignored.length) {
-    showWarning(`${siteFlags.ignored.join(' and ')} ${siteFlags.ignored.length > 1 ? 'are' : 'is'} no longer used: Velocity's design tools were removed in 2.5.1. Ignoring.`);
+    showWarning(`${siteFlags.ignored.join(' and ')} ${siteFlags.ignored.length > 1 ? 'are no longer supported and were' : 'is no longer supported and was'} ignored.`);
   }
   if (siteFlags.error) {
     showError(siteFlags.error);
