@@ -125,6 +125,6 @@ export interface UpgradeOptions {
 
 export interface FileDiff {
   path: string;
-  status: 'added' | 'modified' | 'unchanged' | 'removed' | 'conflict';
+  status: 'added' | 'modified' | 'unchanged' | 'kept' | 'removed' | 'conflict';
   category: 'safe' | 'protected';
 }

@@ -167,7 +167,11 @@ export function diffProjects(
 
         if (storedHash) {
           const currentHash = createHash('sha256').update(currentContent).digest('hex');
-          if (currentHash !== storedHash) {
+          const freshHash = createHash('sha256').update(freshContent).digest('hex');
+          if (currentHash !== storedHash && freshHash === storedHash) {
+            // User modified this file but the release didn't change it → keep the user's version
+            diffs.push({ path: filePath, status: 'kept', category: 'safe' });
+          } else if (currentHash !== storedHash) {
             // User modified this file AND template changed it → conflict
             diffs.push({ path: filePath, status: 'conflict', category: 'safe' });
           } else {
@@ -193,11 +197,13 @@ export function summarizeDiffs(diffs: FileDiff[]): {
   added: number;
   modified: number;
   unchanged: number;
+  kept: number;
   conflict: number;
 } {
   let added = 0;
   let modified = 0;
   let unchanged = 0;
+  let kept = 0;
   let conflict = 0;
 
   for (const diff of diffs) {
@@ -211,11 +217,14 @@ export function summarizeDiffs(diffs: FileDiff[]): {
       case 'unchanged':
         unchanged++;
         break;
+      case 'kept':
+        kept++;
+        break;
       case 'conflict':
         conflict++;
         break;
     }
   }
 
-  return { added, modified, unchanged, conflict };
+  return { added, modified, unchanged, kept, conflict };
 }

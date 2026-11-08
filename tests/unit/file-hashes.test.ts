@@ -45,6 +45,19 @@ describe('stored file hashes', () => {
     expect(diff?.status).toBe('conflict');
   });
 
+  it('keeps an edited file the release did not change', () => {
+    write(current, 'edited by the user');
+    write(fresh, 'original');
+    const [diff] = diffProjects(current, fresh, manifest, { [FILE]: sha('original') });
+    expect(diff?.status).toBe('kept');
+  });
+
+  it('still reports a conflict when the release changed an edited file', () => {
+    write(current, 'edited by the user');
+    const [diff] = diffProjects(current, fresh, manifest, { [FILE]: sha('original') });
+    expect(diff?.status).toBe('conflict');
+  });
+
   it('overwrites an untouched file without a conflict', () => {
     write(current, 'original');
     const [diff] = diffProjects(current, fresh, manifest, {

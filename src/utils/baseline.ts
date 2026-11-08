@@ -56,9 +56,17 @@ function sha256(filePath: string): string {
   return createHash('sha256').update(readFileSync(filePath)).digest('base64');
 }
 
-export function computeBaseline(root: string, safe: string[]): Baseline {
+/**
+ * `hashFrom` maps a project-relative path to another file whose bytes stand in
+ * for it, so a file the user edited can still be recorded as Velocity shipped it.
+ */
+export function computeBaseline(
+  root: string,
+  safe: string[],
+  hashFrom: Record<string, string> = {}
+): Baseline {
   const files = Object.fromEntries(
-    velocityOwnedFiles(root, safe).map((rel) => [rel, sha256(join(root, rel))])
+    velocityOwnedFiles(root, safe).map((rel) => [rel, sha256(hashFrom[rel] ?? join(root, rel))])
   );
   return { note: BASELINE_NOTE, files };
 }
@@ -70,10 +78,11 @@ export function computeBaseline(root: string, safe: string[]): Baseline {
  */
 export function writeBaseline(
   root: string,
-  manifest: { files?: { safe?: string[] }; scaffold?: { baseline?: unknown } } | null | undefined
+  manifest: { files?: { safe?: string[] }; scaffold?: { baseline?: unknown } } | null | undefined,
+  hashFrom: Record<string, string> = {}
 ): number | null {
   if (!manifest || manifest.scaffold?.baseline === false) return null;
-  const baseline = computeBaseline(root, manifest.files?.safe ?? []);
+  const baseline = computeBaseline(root, manifest.files?.safe ?? [], hashFrom);
   const target = join(root, BASELINE_PATH);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, JSON.stringify(baseline, null, 2) + '\n');
