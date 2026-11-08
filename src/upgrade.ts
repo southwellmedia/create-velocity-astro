@@ -8,7 +8,7 @@ import pc from 'picocolors';
 import type { UpgradeOptions, UpgradeManifest, MigrationStep } from './types.js';
 import { readVelocityConfig, writeVelocityConfig } from './utils/velocity-config.js';
 import { writeBaseline } from './utils/baseline.js';
-import { diffProjects, diffStructural, summarizeDiffs, computeFileHashes } from './utils/diff.js';
+import { diffProjects, diffStructural, summarizeDiffs, computeFileHashes, hashFile } from './utils/diff.js';
 import { applyDependencyChanges, applyPackageJsonChanges, hasDependencyChanges } from './utils/dependencies.js';
 import type { PackageJson } from './utils/dependencies.js';
 import {
@@ -332,7 +332,14 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   // 4. Diff safe files, passing stored hashes for user-modification detection
   const safeDiffs = diffProjects(targetDir, tempDir, manifest, config.fileHashes);
   const diffs = [...safeDiffs, ...diffStructural(targetDir, tempDir, manifest, safeDiffs)];
-  const { added, modified, conflict } = summarizeDiffs(diffs);
+  const { added, modified, kept, conflict } = summarizeDiffs(diffs);
+
+  // Files the user edited that this release didn't change keep the user's version, but their
+  // stored hashes stay the ones Velocity shipped, so the edits are still detected next time.
+  const keptDiffs = diffs.filter((d) => d.status === 'kept');
+  const keptFrom: Record<string, string> = Object.fromEntries(
+    keptDiffs.map((d) => [d.path.replace(/\\/g, '/'), join(tempDir, d.path)])
+  );
 
   // If no changes at all
   if (added === 0 && modified === 0 && conflict === 0 && !diffs.some((d) => d.status === 'removed') &&
@@ -346,7 +353,10 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
         updatedAt: new Date().toISOString().slice(0, 10),
         template: sourceRecord(templateSource),
       });
-      refreshBaseline(targetDir, manifest);
+      refreshBaseline(targetDir, manifest, keptFrom);
+    }
+    if (kept > 0) {
+      p.log.info(`Kept your edits to ${kept} file${kept !== 1 ? 's' : ''} this release didn't change.`);
     }
     p.outro('');
     cleanup(tempDir);
@@ -416,6 +426,9 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
 
   // 6d. Compute and store file hashes for the new state
   const newHashes = computeFileHashes(targetDir, manifest.files.safe);
+  for (const [path, freshPath] of Object.entries(keptFrom)) {
+    newHashes[path] = hashFile(freshPath);
+  }
 
   // 6e. Update .velocity.json with new version and file hashes
   writeVelocityConfig(targetDir, {
@@ -430,7 +443,7 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
 
   // 6f. Rewrite .velocity/baseline.json so check:agent measures later edits
   // from the upgraded files, not the ones they replaced.
-  const baselineWritten = refreshBaseline(targetDir, manifest);
+  const baselineWritten = refreshBaseline(targetDir, manifest, keptFrom);
 
   // Report results
   if (modified > 0) {
@@ -438,6 +451,9 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   }
   if (added > 0) {
     p.log.success(pc.green(`Added ${added} new file${added !== 1 ? 's' : ''}`));
+  }
+  if (kept > 0) {
+    p.log.success(pc.green(`Kept your edits to ${kept} file${kept !== 1 ? 's' : ''} this release didn't change`));
   }
   if (hasDepChanges) {
     p.log.success(pc.green('Updated package.json dependencies'));
@@ -470,9 +486,13 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
  * Rewrites .velocity/baseline.json from the project's current Velocity-owned
  * files. Non-fatal: check:agent only skips its ownership rule without it.
  */
-function refreshBaseline(targetDir: string, manifest: UpgradeManifest): boolean {
+function refreshBaseline(
+  targetDir: string,
+  manifest: UpgradeManifest,
+  hashFrom: Record<string, string> = {}
+): boolean {
   try {
-    return writeBaseline(targetDir, manifest) !== null;
+    return writeBaseline(targetDir, manifest, hashFrom) !== null;
   } catch (error) {
     p.log.warn(
       pc.yellow(

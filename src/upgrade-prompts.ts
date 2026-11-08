@@ -22,7 +22,7 @@ export function showChangeSummary(
   diffs: FileDiff[],
   manifest: UpgradeManifest
 ): void {
-  const { added, modified, conflict } = summarizeDiffs(diffs);
+  const { added, modified, kept, conflict } = summarizeDiffs(diffs);
   const migrationCount = manifest.migrations.length;
 
   const lines: string[] = [];
@@ -32,7 +32,15 @@ export function showChangeSummary(
   if (conflictFiles.length > 0) {
     lines.push(pc.bold(pc.yellow('  Files to replace (your versions are backed up):')));
     for (const f of conflictFiles) {
-      lines.push(`    ${pc.yellow('⚠')} ${f.path} ${pc.dim('→ backup created, template version applied')}`);
+      lines.push(`    ${pc.yellow('⚠')} ${f.path} ${pc.dim('→ your version is backed up, then replaced')}`);
+    }
+  }
+
+  const keptFiles = diffs.filter((d) => d.status === 'kept');
+  if (keptFiles.length > 0) {
+    lines.push(pc.bold('  Your edits kept (this release doesn\'t change these files):'));
+    for (const f of keptFiles) {
+      lines.push(`    ${pc.green('=')} ${f.path}`);
     }
   }
 
@@ -91,6 +99,7 @@ export function showChangeSummary(
   const summary = [];
   if (modified > 0) summary.push(`${modified} updated`);
   if (added > 0) summary.push(`${added} added`);
+  if (kept > 0) summary.push(`${kept} kept`);
   if (conflict > 0) summary.push(`${pc.yellow(`${conflict} conflicts`)}`);
   summary.push(`${manifest.files.protected.length} protected ${pc.dim('(not touched)')}`);
 

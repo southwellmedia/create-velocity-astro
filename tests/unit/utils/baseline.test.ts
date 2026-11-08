@@ -84,6 +84,15 @@ describe('computeBaseline', () => {
   });
 });
 
+describe('computeBaseline with hashFrom', () => {
+  it('records a substitute file in place of the project file', () => {
+    const dir = project({ 'src/lib/a.ts': 'edited by the user' });
+    const shipped = project({ 'a.ts': 'as Velocity shipped it' });
+    const baseline = computeBaseline(dir, ['src/lib/'], { 'src/lib/a.ts': join(shipped, 'a.ts') });
+    expect(baseline.files).toEqual({ 'src/lib/a.ts': sha('as Velocity shipped it') });
+  });
+});
+
 describe('writeBaseline', () => {
   const manifest = (scaffold: Record<string, unknown> = {}) => ({
     files: { safe: ['src/lib/', 'tsconfig.json'] },
