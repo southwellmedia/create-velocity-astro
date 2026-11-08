@@ -405,6 +405,7 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
   for (const diff of removedDiffs) {
     rmSync(join(targetDir, diff.path), { force: true });
   }
+  removeEmptyParents(targetDir, removedDiffs.map((d) => d.path));
 
   // 6c. Merge package.json dependencies
   const hasDepChanges = hasDependencyChanges(manifest.dependencies) || Boolean(manifest.packageJson);
@@ -515,4 +516,27 @@ function normalizeManifest(manifest: UpgradeManifest): UpgradeManifest {
     },
     migrations: manifest.migrations ?? [],
   };
+}
+
+/**
+ * After files are removed, delete the folders they leave empty (deepest first), stopping at
+ * the project root, so a removed directory doesn't linger.
+ */
+export function removeEmptyParents(root: string, removed: string[]): void {
+  const dirs = new Set<string>();
+  for (const rel of removed) {
+    let dir = dirname(rel);
+    while (dir && dir !== '.' && dir !== '/') {
+      dirs.add(dir);
+      dir = dirname(dir);
+    }
+  }
+  for (const dir of [...dirs].sort((a, b) => b.length - a.length)) {
+    const abs = join(root, dir);
+    try {
+      if (existsSync(abs) && statSync(abs).isDirectory() && readdirSync(abs).length === 0) rmSync(abs, { recursive: true });
+    } catch {
+      // Leave anything we can't inspect alone
+    }
+  }
 }

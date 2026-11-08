@@ -4,14 +4,7 @@ import type { PackageManager, PromptAnswers } from './types.js';
 import type { ComponentSelection } from './registry/types.js';
 import { validateProjectName, toValidProjectName } from './utils/validate.js';
 import { detectPackageManager, getInstallCommand } from './utils/package-manager.js';
-import {
-  DIRECTIONS,
-  normalizeHex,
-  titleCase,
-  type DirectionChoice,
-  type SiteOptions,
-  type StartMode,
-} from './features/site.js';
+import { titleCase, type SiteOptions, type StartMode } from './features/site.js';
 
 interface PromptDefaults {
   projectName?: string;
@@ -19,13 +12,11 @@ interface PromptDefaults {
   start?: StartMode;
   name?: string;
   describe?: string;
-  direction?: DirectionChoice;
-  brand?: string;
   componentSelection?: ComponentSelection;
   i18n?: boolean;
   /** Page names given on the command line */
   pageNames?: string[];
-  /** Whether the template supports the brief and design directions (Velocity 2.5+) */
+  /** Whether the template ships the site brief (Velocity 2.5+) */
   siteSetup?: boolean;
 }
 
@@ -90,30 +81,6 @@ export async function runPrompts(defaults: PromptDefaults = {}): Promise<PromptA
         });
       },
 
-      direction: ({ results }) => {
-        if (results.start !== 'own' || !defaults.siteSetup) return Promise.resolve(undefined);
-        if (defaults.direction) return Promise.resolve(defaults.direction);
-        return p.select({
-          message: 'Design direction?',
-          options: [
-            { value: 'auto' as DirectionChoice, label: 'Let my agent choose', hint: 'From what the site is for' },
-            ...DIRECTIONS.map((d) => ({ value: d.id as DirectionChoice, label: d.label, hint: d.hint })),
-          ],
-          initialValue: 'auto' as DirectionChoice,
-        });
-      },
-
-      brand: ({ results }) => {
-        if (!results.direction || results.direction === 'auto') return Promise.resolve(undefined);
-        if (defaults.brand) return Promise.resolve(defaults.brand);
-        return p.text({
-          message: 'Brand colour? Hex, or Enter for the direction’s own',
-          placeholder: '#c2410c',
-          defaultValue: '',
-          validate: (value) => (value && !normalizeHex(value) ? 'Enter a hex colour such as #c2410c, or leave it empty' : undefined),
-        });
-      },
-
       i18n: () =>
         defaults.i18n !== undefined
           ? Promise.resolve(defaults.i18n)
@@ -142,13 +109,10 @@ export async function runPrompts(defaults: PromptDefaults = {}): Promise<PromptA
 
   const start = (answers.start as StartMode) ?? 'own';
   const describe = typeof answers.describe === 'string' && answers.describe.trim() ? answers.describe.trim() : undefined;
-  const brand = normalizeHex(typeof answers.brand === 'string' ? answers.brand : undefined);
   const site: SiteOptions = {
     start,
     ...(answers.name ? { name: String(answers.name).trim() } : {}),
     ...(describe ? { describe } : {}),
-    ...(answers.direction ? { direction: answers.direction as DirectionChoice } : {}),
-    ...(brand ? { brand } : {}),
   };
 
   return {
@@ -170,32 +134,21 @@ export function showIntro(): void {
 
 export interface OutroContext {
   site?: SiteOptions;
-  /** The template supports the brief and design directions (Velocity 2.5+) */
+  /** The template ships the site brief (Velocity 2.5+) */
   siteSetup?: boolean;
-  /** Dependencies were installed, so a chosen direction was applied */
+  /** Dependencies were installed */
   installed?: boolean;
-  /** Command to apply the direction when it couldn't be applied during scaffolding */
-  designCommand?: string;
 }
 
 export function showOutro(projectName: string, packageManager: PackageManager, context: OutroContext = {}): void {
   const runCmd = packageManager === 'npm' ? 'npm run' : packageManager;
   const { site, siteSetup } = context;
-  const steps = [`cd ${projectName}`];
-  if (context.installed === false) steps.push(getInstallCommand(packageManager));
-  steps.push(`${runCmd} dev`);
+  const lines = [`cd ${projectName}`];
+  if (context.installed === false) lines.push(getInstallCommand(packageManager));
+  lines.push(`${runCmd} dev`);
 
-  const lines = [...steps];
   if (site?.start === 'own' && siteSetup) {
     lines.push('', `Then ask your AI agent: ${pc.cyan('"Set up this site"')}`, 'It reads .agents/site.md and finishes the brief with you.');
-    const direction = DIRECTIONS.find((d) => d.id === site.direction);
-    if (direction && context.designCommand) {
-      lines.push(`Design: ${direction.label} · apply it with \`${context.designCommand}\``);
-    } else if (direction) {
-      lines.push(`Design: ${direction.label} · run \`${packageManager === 'npm' ? 'npm run design --' : `${packageManager} run design`} tokens\` to inspect it`);
-    } else {
-      lines.push('Design: your agent picks one of five directions with you.');
-    }
   } else if (site?.start === 'demo' && siteSetup) {
     lines.push('', `When you're ready, ask your AI agent: ${pc.cyan('"Replace the demo with my site"')}`);
   }

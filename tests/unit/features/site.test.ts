@@ -2,19 +2,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import {
-  BRIEF_FILE,
-  BRIEF_TEMPLATE,
-  buildBrief,
-  directionFontPackages,
-  isDirection,
-  normalizeHex,
-  parseSiteFlags,
-  seedSite,
-  setSiteName,
-  supportsSiteSetup,
-  titleCase,
-} from '../../../src/features/site.js';
+import { BRIEF_FILE, BRIEF_TEMPLATE, buildBrief, parseSiteFlags, seedSite, setSiteName, supportsSiteSetup, titleCase } from '../../../src/features/site.js';
+import { removeEmptyParents } from '../../../src/upgrade.js';
+import { existsSync } from 'node:fs';
 
 const tempDirs: string[] = [];
 afterEach(() => {
@@ -46,14 +36,7 @@ Status: draft
 
 ## Design
 
-- Direction:
-- Why:
-- Brand colour:
-- Fonts:
-- Radius and density:
-- Imagery:
-- Section rhythm:
-  - Home:
+<!-- What the user said about the look. -->
 
 ## Languages
 
@@ -108,15 +91,10 @@ describe('supportsSiteSetup', () => {
 
 describe('parseSiteFlags', () => {
   it('reads every site flag', () => {
-    const { options, error } = parseSiteFlags({
-      start: 'own',
-      name: " Rosa's Bakery ",
-      describe: 'Neighbourhood bakery in Leith',
-      direction: 'warm-local',
-      brand: 'C2410C',
-    });
+    const { options, error, ignored } = parseSiteFlags({ start: 'own', name: " Rosa's Bakery ", describe: 'Neighbourhood bakery in Leith' });
     expect(error).toBeUndefined();
-    expect(options).toEqual({ start: 'own', name: "Rosa's Bakery", describe: 'Neighbourhood bakery in Leith', direction: 'warm-local', brand: '#c2410c' });
+    expect(ignored).toEqual([]);
+    expect(options).toEqual({ start: 'own', name: "Rosa's Bakery", describe: 'Neighbourhood bakery in Leith' });
   });
 
   it('keeps --demo as an alias for --start demo, with --start winning', () => {
@@ -125,29 +103,22 @@ describe('parseSiteFlags', () => {
     expect(parseSiteFlags({}).options.start).toBeUndefined();
   });
 
-  it('names the bad flag', () => {
+  it('names a bad --start', () => {
     expect(parseSiteFlags({ start: 'shop' }).error).toMatch(/--start must be one of own, demo, blank/);
-    expect(parseSiteFlags({ direction: 'brutalist' }).error).toMatch(/--direction must be one of editorial,.*or auto/);
-    expect(parseSiteFlags({ brand: 'orange' }).error).toMatch(/--brand must be a hex colour/);
+  });
+
+  it('accepts but ignores CLI 2.2 design flags, so old commands still run', () => {
+    const { options, error, ignored } = parseSiteFlags({ direction: 'warm-local', brand: '#c2410c' });
+    expect(error).toBeUndefined();
+    expect(ignored).toEqual(['--direction', '--brand']);
+    expect(options).toEqual({});
   });
 });
 
 describe('helpers', () => {
-  it('normalizes hex colours', () => {
-    expect(normalizeHex('#C41')).toBe('#cc4411');
-    expect(normalizeHex('c2410c')).toBe('#c2410c');
-    expect(normalizeHex('#c2410')).toBeUndefined();
-    expect(normalizeHex(undefined)).toBeUndefined();
-  });
-
   it('title-cases project names', () => {
     expect(titleCase('rosas-bakery')).toBe('Rosas Bakery');
     expect(titleCase('my_velocity site')).toBe('My Velocity Site');
-  });
-
-  it('knows the five directions and auto', () => {
-    for (const id of ['editorial', 'warm-local', 'clinical', 'bold-product', 'minimal-portfolio', 'auto']) expect(isDirection(id)).toBe(true);
-    expect(isDirection('default')).toBe(false);
   });
 
   it('sets the site name, quoting it safely', () => {
@@ -161,41 +132,21 @@ describe('buildBrief', () => {
   const base = { start: 'own' as const, locales: ['en', 'es'], pages: [] as string[] };
 
   it('marks the brief as seeded and writes only what the user typed', () => {
-    const brief = buildBrief(TEMPLATE, {
-      ...base,
-      name: "Rosa's Bakery",
-      describe: 'Neighbourhood bakery in Leith',
-      direction: 'warm-local',
-      brand: '#c2410c',
-      fonts: ['Nunito'],
-      pages: ['Menu', 'Visit Us'],
-    });
+    const brief = buildBrief(TEMPLATE, { ...base, name: "Rosa's Bakery", describe: 'Neighbourhood bakery in Leith', pages: ['Menu', 'Visit Us'] });
     expect(brief).toMatch(/^Status: seeded by CLI$/m);
     expect(section(brief, 'Business')).toContain('Neighbourhood bakery in Leith');
-    expect(section(brief, 'Brand')).toContain("- Site name: Rosa's Bakery\n- Brand colour: #c2410c");
-    const design = section(brief, 'Design');
-    expect(design).toContain('- Direction: warm-local');
-    expect(design).toContain('- Brand colour: #c2410c');
-    expect(design).toContain('- Fonts: Nunito');
-    expect(design).toContain('- Imagery:\n');
+    expect(section(brief, 'Brand')).toContain("- Site name: Rosa's Bakery");
     expect(section(brief, 'Languages')).toContain('- en (default)\n- es');
-    expect(section(brief, 'Sitemap')).toContain('- Menu → (sections to plan) → planned');
+    expect(section(brief, 'Sitemap')).toContain('- Menu → planned');
+    expect(section(brief, 'Decisions log')).toMatch(/project created with create-velocity-astro\./);
     // Nothing invented: unanswered headings keep their guidance for the agent.
     expect(section(brief, 'Audience')).toBe('## Audience\n\n<!-- Who the site is for. -->\n');
-    expect(section(brief, 'Facts')).toBe('## Facts\n');
-  });
-
-  it('leaves the direction to the agent on auto, and records a pending command', () => {
-    const auto = buildBrief(TEMPLATE, { ...base, direction: 'auto' });
-    expect(section(auto, 'Design')).toContain('- Direction: agent to choose');
-    expect(section(auto, 'Business')).toBe('## Business\n\n<!-- What the business is and does. -->\n');
-    const pending = buildBrief(TEMPLATE, { ...base, direction: 'clinical', pendingCommand: 'npm run design -- direction --base clinical' });
-    expect(section(pending, 'Decisions log')).toContain('Direction not applied yet: run `npm run design -- direction --base clinical`.');
+    expect(section(brief, 'Design')).toBe('## Design\n\n<!-- What the user said about the look. -->\n');
   });
 
   it('keeps every heading in order', () => {
     const headings = (text: string) => [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
-    expect(headings(buildBrief(TEMPLATE, { ...base, describe: 'x', name: 'y', brand: '#000000', direction: 'editorial', pages: ['A'] }))).toEqual(headings(TEMPLATE));
+    expect(headings(buildBrief(TEMPLATE, { ...base, describe: 'x', name: 'y', pages: ['A'] }))).toEqual(headings(TEMPLATE));
   });
 });
 
@@ -219,17 +170,12 @@ describe('seedSite', () => {
   });
 });
 
-describe('directionFontPackages', () => {
-  it("reads a direction's fonts from the template, with the design script's package names", () => {
-    const dir = project({
-      '.agents/design/directions/editorial.json': JSON.stringify({ fonts: { display: { family: 'Fraunces' }, body: { family: 'Source Sans 3' } } }),
-      '.agents/design/directions/warm-local.json': JSON.stringify({ fonts: { display: { family: 'Nunito' }, body: { family: 'Nunito' } } }),
-    });
-    expect(directionFontPackages(dir, 'editorial')).toEqual({
-      families: ['Source Sans 3', 'Fraunces'],
-      packages: ['@fontsource-variable/source-sans-3', '@fontsource-variable/fraunces'],
-    });
-    expect(directionFontPackages(dir, 'warm-local').packages).toEqual(['@fontsource-variable/nunito']);
-    expect(directionFontPackages(dir, 'clinical')).toEqual({ families: [], packages: [] });
+describe('removeEmptyParents', () => {
+  it('deletes folders that removed files leave empty, and nothing else', () => {
+    const dir = project({ '.agents/design/sections/x.astro': '', '.agents/skills/a/SKILL.md': 'keep' });
+    rmSync(join(dir, '.agents/design/sections/x.astro'));
+    removeEmptyParents(dir, ['.agents/design/sections/x.astro']);
+    expect(existsSync(join(dir, '.agents/design'))).toBe(false);
+    expect(existsSync(join(dir, '.agents/skills/a/SKILL.md'))).toBe(true);
   });
 });

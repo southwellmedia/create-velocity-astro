@@ -6,7 +6,7 @@ import pc from 'picocolors';
 import type { CliOptions } from './types.js';
 import type { ComponentSelection } from './registry/types.js';
 import { runPrompts, showIntro, showOutro, showError, showWarning } from './prompts.js';
-import { scaffold, type ScaffoldResult } from './scaffold.js';
+import { scaffold } from './scaffold.js';
 import { upgrade } from './upgrade.js';
 import { isEmptyDir } from './utils/fs.js';
 import { toValidProjectName } from './utils/validate.js';
@@ -14,7 +14,6 @@ import { resolveTemplateSource } from './template-source.js';
 import { parsePageNames } from './features/pages.js';
 import { detectPackageManager } from './utils/package-manager.js';
 import {
-  DIRECTIONS,
   fetchTemplateVersion,
   parseSiteFlags,
   supportsSiteSetup,
@@ -47,9 +46,6 @@ ${pc.bold('Options:')}
   --demo              Same as --start demo
   --name "Rosa's Bakery"  Site name (default: the project name, title-cased)
   --describe "…"      One sentence on what the site is for
-  --direction <id>    Design direction: ${DIRECTIONS.map((d) => d.id).join(', ')}, or auto
-                      (default: auto, your agent chooses)
-  --brand "#c2410c"   Brand colour for the direction
   --components        Include all components (the default)
   --components=none   Exclude optional components (core pages keep what they need)
   --components=ui,patterns  Include specific categories
@@ -74,7 +70,7 @@ ${pc.bold('Requirements:')}
 ${pc.bold('Examples:')}
   npm create velocity-astro@latest my-site
   npm create velocity-astro@latest my-site -- --demo
-  pnpm create velocity-astro rosas-bakery -y --name "Rosa's Bakery" --describe "Neighbourhood bakery in Leith" --direction warm-local --brand "#c2410c"
+  pnpm create velocity-astro rosas-bakery -y --name "Rosa's Bakery" --describe "Neighbourhood bakery in Leith"
   npm create velocity-astro@latest my-site -- --components=ui,patterns
   npm create velocity-astro@latest my-site -- --ref v2.0.0
   pnpm create velocity-astro my-site -y --template ../velocity
@@ -190,11 +186,14 @@ export async function run(argv: string[]): Promise<void> {
   const install = args.install !== false;
 
   const siteFlags = parseSiteFlags(args);
+  if (siteFlags.ignored.length) {
+    showWarning(`${siteFlags.ignored.join(' and ')} ${siteFlags.ignored.length > 1 ? 'are no longer supported and were' : 'is no longer supported and was'} ignored.`);
+  }
   if (siteFlags.error) {
     showError(siteFlags.error);
     process.exit(1);
   }
-  // The brief, site name and design prompts need a Velocity 2.5+ template; older refs get the previous flow.
+  // The brief and site name prompts need a Velocity 2.5+ template; older refs get the previous flow.
   const templateVersion = await fetchTemplateVersion(templateSource);
   const siteSetup = supportsSiteSetup(templateVersion);
 
@@ -226,16 +225,13 @@ export async function run(argv: string[]): Promise<void> {
       ...(start === 'own'
         ? {
             name: siteFlags.options.name ?? titleCase(projectName),
-            direction: siteFlags.options.direction ?? 'auto',
             ...(siteFlags.options.describe ? { describe: siteFlags.options.describe } : {}),
-            ...(siteFlags.options.brand ? { brand: siteFlags.options.brand } : {}),
           }
         : {}),
     };
 
-    let result: ScaffoldResult = {};
     try {
-      result = await scaffold({
+      await scaffold({
         projectName,
         targetDir,
         demo: start === 'demo',
@@ -253,7 +249,7 @@ export async function run(argv: string[]): Promise<void> {
       process.exit(1);
     }
 
-    showOutro(projectName, packageManager, outroContext(site, siteSetup, install, result));
+    showOutro(projectName, packageManager, { site, siteSetup, installed: install });
     return;
   }
 
@@ -290,7 +286,7 @@ export async function run(argv: string[]): Promise<void> {
 
   // Run scaffold
   try {
-    const result = await scaffold({
+    await scaffold({
       projectName,
       targetDir,
       demo,
@@ -304,15 +300,9 @@ export async function run(argv: string[]): Promise<void> {
       site,
     });
 
-    showOutro(projectName, packageManager, outroContext(site, siteSetup, install, result));
+    showOutro(projectName, packageManager, { site, siteSetup, installed: install });
   } catch (error) {
     showError(error instanceof Error ? error.message : 'An unexpected error occurred');
     process.exit(1);
   }
-}
-
-/** What the outro needs to say about the site setup. */
-function outroContext(site: SiteOptions, siteSetup: boolean, install: boolean, result: ScaffoldResult) {
-  // A direction that couldn't be applied (no install, or the design script failed) comes with its command.
-  return { site, siteSetup, installed: install, designCommand: result.designPending };
 }

@@ -5,15 +5,7 @@ import * as p from '@clack/prompts';
 import { execa } from 'execa';
 import type { ScaffoldOptions, UpgradeManifest } from './types.js';
 import { getInstallCommand } from './utils/package-manager.js';
-import type { PackageManager } from './types.js';
-import {
-  DESIGN_SCRIPT,
-  directionFontPackages,
-  seedSite,
-  supportsSiteSetup,
-  type BriefInput,
-  type DirectionId,
-} from './features/site.js';
+import { seedSite, supportsSiteSetup, type BriefInput } from './features/site.js';
 import { initGit } from './utils/git.js';
 import { showSuccess, showWarning } from './prompts.js';
 import { generatePages } from './features/pages.js';
@@ -62,12 +54,7 @@ function removeQuietly(path: string): void {
  * (variants → component selection → cleanup), and only then copied into the
  * target directory. The CLI ships no template files of its own.
  */
-/** What the outro needs to know: the command to apply a chosen direction that wasn't applied. */
-export interface ScaffoldResult {
-  designPending?: string;
-}
-
-export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult> {
+export async function scaffold(options: ScaffoldOptions): Promise<void> {
   const {
     projectName,
     targetDir,
@@ -203,21 +190,16 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
 
   // Step 9: Seed the site brief and name (own site, Velocity 2.5+ templates)
   const seeding = site?.start === 'own' && supportsSiteSetup(manifest?.version);
-  const direction = site?.direction && site.direction !== 'auto' ? (site.direction as DirectionId) : undefined;
-  const directionCommand = direction ? designCommand(packageManager, direction, site?.brand) : undefined;
-  const briefInput: BriefInput | undefined = seeding && site
-    ? { ...site, locales: readLocales(targetDir), pages, pendingCommand: directionCommand }
-    : undefined;
+  const briefInput: BriefInput | undefined = seeding && site ? { ...site, locales: readLocales(targetDir), pages } : undefined;
   if (briefInput) {
     if (!seedSite(targetDir, briefInput)) {
       showWarning('This Velocity version has no site brief template; skipped .agents/site.md.');
     }
   } else if (site?.start === 'own' && manifest && !supportsSiteSetup(manifest.version)) {
-    showWarning(`Velocity ${manifest.version} predates design directions and the site brief (2.5); created a minimal project.`);
+    showWarning(`Velocity ${manifest.version} predates the site brief (2.5); created a minimal project.`);
   }
 
   // Step 10: Install dependencies
-  let installed = false;
   if (install) {
     spinner.start(`Installing dependencies with ${packageManager}...`);
     try {
@@ -225,26 +207,13 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
       const [cmd, ...args] = installCmd.split(' ');
       await execa(cmd!, args, { cwd: targetDir });
       spinner.stop('Dependencies installed');
-      installed = true;
     } catch {
       spinner.stop('Failed to install dependencies');
       showWarning(`Run "${getInstallCommand(packageManager)}" manually to install dependencies`);
     }
   }
 
-  // Step 11: Apply the design direction with the project's own design script
-  let designPending = briefInput && direction ? directionCommand : undefined;
-  if (briefInput && direction && installed) {
-    const applied = await applyDirection(targetDir, packageManager, direction, site?.brand);
-    if (applied.ok) {
-      seedSite(targetDir, { ...briefInput, pendingCommand: undefined, fonts: applied.families });
-      designPending = undefined;
-    } else {
-      showWarning(`Couldn't apply the ${direction} direction (${applied.reason}). Run "${directionCommand}" in the project.`);
-    }
-  }
-
-  // Step 12: Initialize git, last, so the first commit holds the finished project
+  // Step 11: Initialize git, last, so the first commit holds the finished project
   spinner.start('Initializing git repository...');
   const gitInitialized = await initGit(targetDir);
   if (gitInitialized) {
@@ -254,7 +223,6 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
   }
 
   showSuccess(`Project "${projectName}" created successfully!`);
-  return { designPending };
 }
 
 /** Locales enabled in the scaffolded project (src/i18n/locales.mjs), default first. */
@@ -266,48 +234,4 @@ function readLocales(projectDir: string): string[] {
   const locales = [...(list ?? '').matchAll(/['"]([\w-]+)['"]/g)].map((m) => m[1]!);
   const fallback = /defaultLocale\s*=\s*['"]([\w-]+)['"]/.exec(text)?.[1] ?? 'en';
   return locales.length ? [fallback, ...locales.filter((l) => l !== fallback)] : [fallback];
-}
-
-/** The command a user runs to apply a direction themselves. */
-export function designCommand(packageManager: PackageManager, direction: string, brand?: string): string {
-  const run = packageManager === 'npm' ? 'npm run design --' : `${packageManager} run design`;
-  return `${run} direction --base ${direction}${brand ? ` --brand "${brand}"` : ''}`;
-}
-
-function addCommand(packageManager: PackageManager): string[] {
-  return packageManager === 'npm' ? ['npm', 'install'] : [packageManager, 'add'];
-}
-
-/**
- * Install the direction's fonts, then run the project's design script, which writes the
- * theme, registers the fonts and checks contrast. The CLI holds no design logic.
- */
-async function applyDirection(
-  projectDir: string,
-  packageManager: PackageManager,
-  direction: DirectionId,
-  brand: string | undefined,
-): Promise<{ ok: true; families: string[] } | { ok: false; reason: string }> {
-  if (!existsSync(join(projectDir, DESIGN_SCRIPT))) return { ok: false, reason: 'no design script in this template' };
-  const spinner = p.spinner();
-  const { families, packages } = directionFontPackages(projectDir, direction);
-  const missing = packages.filter((pkg) => !existsSync(join(projectDir, 'node_modules', pkg)));
-  try {
-    if (missing.length) {
-      spinner.start(`Installing fonts: ${families.join(', ')}...`);
-      const [cmd, ...args] = addCommand(packageManager);
-      await execa(cmd!, [...args, ...missing], { cwd: projectDir });
-      spinner.stop(`Fonts installed: ${families.join(', ')}`);
-    }
-    spinner.start(`Applying the ${direction} design direction...`);
-    const base = ['direction', '--base', direction, ...(brand ? ['--brand', brand] : [])];
-    await execa(process.execPath, [DESIGN_SCRIPT, ...base], { cwd: projectDir });
-    await execa(process.execPath, [DESIGN_SCRIPT, 'fonts', '--fix'], { cwd: projectDir });
-    spinner.stop(`Design direction applied: ${direction}`);
-    return { ok: true, families };
-  } catch (error) {
-    spinner.stop('Design direction not applied');
-    const detail = error instanceof Error && 'stdout' in error ? String((error as { stdout?: unknown }).stdout ?? '').split('\n')[0] : '';
-    return { ok: false, reason: detail || (error instanceof Error ? error.message.split('\n')[0]! : String(error)) };
-  }
 }
