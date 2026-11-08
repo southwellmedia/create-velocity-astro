@@ -57,7 +57,6 @@ export function createInitialConfig(options: ScaffoldOptions, version: string): 
       i18n: options.i18n,
       components: componentsValue,
       ...(options.site ? { start: options.site.start } : {}),
-      ...(options.site?.start === 'own' && options.site.direction ? { direction: options.site.direction } : {}),
     },
     template: sourceRecord(options.templateSource),
   };

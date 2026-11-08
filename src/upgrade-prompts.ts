@@ -213,9 +213,8 @@ export function showUpgradeOutro(hasDepChanges: boolean, newSiteSetup = false): 
   if (newSiteSetup) {
     p.log.info(
       [
-        'New: design directions and a site setup skill.',
-        `Ask your AI agent to ${pc.cyan('"set up the design for this site"')}: it keeps your pages and records a brief in .agents/site.md.`,
-        `Or browse the directions with ${pc.cyan('npm run design -- direction --list')}.`,
+        'New: a site setup skill for AI agents.',
+        `Ask your agent to ${pc.cyan('"set up this site"')}: it keeps your pages and records a brief in .agents/site.md.`,
       ].join('\n')
     );
   }

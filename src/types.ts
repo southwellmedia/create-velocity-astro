@@ -1,7 +1,7 @@
 import type { ComponentSelection } from './registry/types.js';
 import type { TemplateSource } from './template-source.js';
 import type { ScaffoldSection } from './variants.js';
-import type { SiteOptions, StartMode, DirectionChoice } from './features/site.js';
+import type { SiteOptions, StartMode } from './features/site.js';
 
 export interface CliOptions {
   projectName?: string;
@@ -18,6 +18,7 @@ export interface CliOptions {
   start?: string;
   name?: string;
   describe?: string;
+  /** No longer used (CLI 2.2); accepted so old commands still run */
   direction?: string;
   brand?: string;
 }
@@ -64,8 +65,6 @@ export interface VelocityConfig {
     components: string;
     /** What the user chose to start: their own site, the demo, or a blank project */
     start?: StartMode;
-    /** Design direction chosen at creation, or 'auto' for the agent to choose */
-    direction?: DirectionChoice;
   };
   /** Template the project was created from / last upgraded to */
   template?: { source: 'github'; ref: string } | { source: 'local'; path: string };
