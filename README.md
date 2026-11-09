@@ -57,7 +57,7 @@ CLI 2.x works with Velocity 2.0 and later. The 1.x CLI is deprecated and no long
 |---------|-------------|
 | **Astro 7 and Tailwind CSS v4** | With TypeScript, React islands and MDX |
 | **AI agent rules and skills** | `AGENTS.md`, plus skills for adding pages and components in Claude Code, Codex, Cursor and other tools |
-| **58 components** | Accessible, typed and dark-mode ready |
+| **70 components** | 41 UI primitives, 10 patterns and 15 page sections; accessible, typed and dark-mode ready |
 | **Working forms** | Contact and newsletter forms on Astro Actions |
 | **Deployment** | Adapter detected for Vercel and Netlify, Node everywhere else, Cloudflare opt-in |
 | **Strict CSP** | Hash-based Content Security Policy on by default |
