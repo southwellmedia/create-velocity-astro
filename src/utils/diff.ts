@@ -99,9 +99,12 @@ export function diffStructural(
   currentDir: string,
   freshDir: string,
   manifest: UpgradeManifest,
-  known: FileDiff[] = []
+  known: FileDiff[] = [],
+  alreadySeeded?: string[]
 ): FileDiff[] {
   const seen = new Set(known.map((d) => normalizePath(d.path)));
+  // Seeded files the project was offered before: if they're missing now, the project removed them.
+  const offered = new Set((alreadySeeded ?? []).map(normalizePath));
   const diffs: FileDiff[] = [];
 
   const visit = (paths: string[], replace: boolean) => {
@@ -109,6 +112,7 @@ export function diffStructural(
       const key = normalizePath(filePath);
       const freshPath = join(freshDir, filePath);
       if (seen.has(key) || !existsSync(freshPath)) continue;
+      if (!replace && offered.has(key)) continue;
       seen.add(key);
 
       const currentPath = join(currentDir, filePath);
@@ -130,6 +134,17 @@ export function diffStructural(
   }
 
   return diffs;
+}
+
+/**
+ * The seeded files (`files.seed`) a template offers, as normalized relative paths.
+ * Recorded in .velocity.json as `seeded`, so later upgrades only add new ones.
+ */
+export function seedPaths(manifest: UpgradeManifest, templateDir: string): string[] {
+  return expandPaths(manifest.files.seed ?? [], templateDir)
+    .filter((filePath) => existsSync(join(templateDir, filePath)))
+    .map(normalizePath)
+    .sort();
 }
 
 export function diffProjects(
