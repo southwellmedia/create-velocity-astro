@@ -11,7 +11,7 @@ import { showSuccess, showWarning } from './prompts.js';
 import { generatePages } from './features/pages.js';
 import { createInitialConfig, writeVelocityConfig } from './utils/velocity-config.js';
 import { copyDirectory } from './utils/fs.js';
-import { computeFileHashes } from './utils/diff.js';
+import { computeFileHashes, seedPaths } from './utils/diff.js';
 import { writeBaseline } from './utils/baseline.js';
 import { applyLockfilePolicy, describeSource, fetchTemplate } from './template-source.js';
 import { checkGates, readManifest, runVariantPipeline } from './variants.js';
@@ -170,6 +170,9 @@ export async function scaffold(options: ScaffoldOptions): Promise<void> {
     const velocityConfig = createInitialConfig(options, templateVersion);
     if (manifest?.files?.safe) {
       velocityConfig.fileHashes = computeFileHashes(targetDir, manifest.files.safe);
+    }
+    if (manifest?.files?.seed) {
+      velocityConfig.seeded = seedPaths(manifest, targetDir);
     }
     writeVelocityConfig(targetDir, velocityConfig);
   } catch {

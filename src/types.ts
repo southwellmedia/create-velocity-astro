@@ -70,6 +70,12 @@ export interface VelocityConfig {
   template?: { source: 'github'; ref: string } | { source: 'local'; path: string };
   /** SHA-256 hashes of safe files at last scaffold/upgrade, keyed by relative path */
   fileHashes?: Record<string, string>;
+  /**
+   * Seeded files (`files.seed`) this project has already been offered, at scaffold
+   * or an earlier upgrade. An upgrade adds only seeded files not listed here, so a
+   * page or test the project deleted on purpose isn't added back.
+   */
+  seeded?: string[];
 }
 
 export interface UpgradeManifest {

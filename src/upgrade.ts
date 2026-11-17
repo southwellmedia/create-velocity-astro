@@ -8,7 +8,7 @@ import pc from 'picocolors';
 import type { UpgradeOptions, UpgradeManifest, MigrationStep } from './types.js';
 import { readVelocityConfig, writeVelocityConfig } from './utils/velocity-config.js';
 import { writeBaseline } from './utils/baseline.js';
-import { diffProjects, diffStructural, summarizeDiffs, computeFileHashes, hashFile } from './utils/diff.js';
+import { diffProjects, diffStructural, summarizeDiffs, computeFileHashes, hashFile, seedPaths } from './utils/diff.js';
 import { applyDependencyChanges, applyPackageJsonChanges, hasDependencyChanges } from './utils/dependencies.js';
 import type { PackageJson } from './utils/dependencies.js';
 import {
@@ -331,7 +331,9 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
 
   // 4. Diff safe files, passing stored hashes for user-modification detection
   const safeDiffs = diffProjects(targetDir, tempDir, manifest, config.fileHashes);
-  const diffs = [...safeDiffs, ...diffStructural(targetDir, tempDir, manifest, safeDiffs)];
+  // Projects from CLI 2.3.1 and earlier have no `seeded` record: every missing
+  // seeded file is offered once more, then recorded, so deletions stick from then on.
+  const diffs = [...safeDiffs, ...diffStructural(targetDir, tempDir, manifest, safeDiffs, config.seeded)];
   const { added, modified, kept, conflict } = summarizeDiffs(diffs);
 
   // Files the user edited that this release didn't change keep the user's version, but their
@@ -437,6 +439,7 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     updatedAt: new Date().toISOString().slice(0, 10),
     template: sourceRecord(templateSource),
     fileHashes: newHashes,
+    seeded: [...new Set([...(config.seeded ?? []), ...seedPaths(manifest, tempDir)])].sort(),
   });
 
   spinner.stop('Changes applied');
